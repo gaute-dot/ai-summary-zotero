@@ -1,0 +1,139 @@
+<vbox id="aisummary-pane" onload="AISummaryPrefs.init()">
+  <groupbox>
+    <label><html:h2>AI provider and model</html:h2></label>
+    <html:div class="aisummary-row">
+      <html:label for="aisummary-provider">Provider used for summaries:</html:label>
+      <html:select id="aisummary-provider" data-pref="provider">
+        <html:option value="anthropic">Anthropic Claude</html:option>
+        <html:option value="openai">OpenAI</html:option>
+        <html:option value="gemini">Google Gemini</html:option>
+        <html:option value="perplexity">Perplexity</html:option>
+      </html:select>
+    </html:div>
+    <html:table id="aisummary-provider-table" style="width: 100%; border-spacing: 4px;">
+      <html:thead>
+        <html:tr>
+          <html:th style="text-align: start;">Provider</html:th>
+          <html:th style="text-align: start;">API key</html:th>
+          <html:th style="text-align: start;">Model</html:th>
+          <html:th></html:th>
+        </html:tr>
+      </html:thead>
+      <html:tbody id="aisummary-provider-rows"></html:tbody>
+    </html:table>
+    <html:p class="aisummary-help" style="opacity: 0.75; margin: 4px 0;">
+      Keys are stored in Zotero's password manager on this computer. Type any model name, or press
+      “Fetch models” to list the models your key can use. “Test” sends a tiny request.
+    </html:p>
+    <html:p id="aisummary-status" style="font-weight: 600; margin: 4px 0;"></html:p>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Output</html:h2></label>
+    <html:div class="aisummary-grid" style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center;">
+      <html:label for="aisummary-language">Summary language:</html:label>
+      <html:input id="aisummary-language" type="text" data-pref="language" list="aisummary-language-list" style="max-width: 20em;"/>
+
+      <html:label for="aisummary-inputMode">Send to the model:</html:label>
+      <html:select id="aisummary-inputMode" data-pref="inputMode">
+        <html:option value="text">Extracted full text (all providers, cheaper)</html:option>
+        <html:option value="pdf">The PDF file itself (Claude, OpenAI, Gemini – includes figures and tables)</html:option>
+      </html:select>
+
+      <html:label for="aisummary-maxChars">Max characters of article text:</html:label>
+      <html:input id="aisummary-maxChars" type="number" min="1000" step="1000" data-pref="maxChars" data-type="int" style="max-width: 10em;"/>
+
+      <html:label for="aisummary-maxTokens">Max output tokens:</html:label>
+      <html:input id="aisummary-maxTokens" type="number" min="256" step="256" data-pref="maxTokens" data-type="int" style="max-width: 10em;"/>
+
+      <html:label for="aisummary-effort">Claude effort:</html:label>
+      <html:select id="aisummary-effort" data-pref="anthropicEffort">
+        <html:option value="low">Low (fastest, cheapest)</html:option>
+        <html:option value="medium">Medium</html:option>
+        <html:option value="high">High</html:option>
+        <html:option value="xhigh">Extra high</html:option>
+        <html:option value="max">Max (slowest)</html:option>
+        <html:option value="">Model default</html:option>
+      </html:select>
+
+      <html:label for="aisummary-temperature">Temperature (OpenAI, Gemini, Perplexity):</html:label>
+      <html:input id="aisummary-temperature" type="text" placeholder="provider default" data-pref="temperature" style="max-width: 10em;"/>
+    </html:div>
+    <html:datalist id="aisummary-language-list">
+      <html:option value="English"/>
+      <html:option value="Norwegian (Bokmål)"/>
+      <html:option value="Norwegian (Nynorsk)"/>
+      <html:option value="Swedish"/>
+      <html:option value="Danish"/>
+      <html:option value="German"/>
+      <html:option value="French"/>
+      <html:option value="Spanish"/>
+      <html:option value="the same language as the article"/>
+    </html:datalist>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>System prompt</html:h2></label>
+    <html:p style="opacity: 0.75; margin: 4px 0;">
+      General instructions sent with every request: tone, rules, format. Variables such as {{language}} are filled in automatically.
+    </html:p>
+    <html:textarea id="aisummary-systemPrompt" rows="10" style="width: 100%; font-family: monospace;"></html:textarea>
+    <html:div class="aisummary-row" style="margin-top: 4px;">
+      <html:button id="aisummary-systemPrompt-reset">Restore default</html:button>
+    </html:div>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Prompt presets</html:h2></label>
+    <html:p style="opacity: 0.75; margin: 4px 0;">
+      Each preset is a task, such as “Structured summary” or “Critical appraisal”. Choose a preset from the
+      AI Summary menu when you right-click items. The article text is added automatically unless the preset contains {{fulltext}}.
+    </html:p>
+    <html:div class="aisummary-row" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+      <html:select id="aisummary-preset-list" style="min-width: 16em;"></html:select>
+      <html:button id="aisummary-preset-new">New</html:button>
+      <html:button id="aisummary-preset-duplicate">Duplicate</html:button>
+      <html:button id="aisummary-preset-delete">Delete</html:button>
+      <html:button id="aisummary-preset-restore">Restore built-in presets</html:button>
+    </html:div>
+    <html:div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; margin-top: 6px;">
+      <html:label for="aisummary-preset-name">Name:</html:label>
+      <html:input id="aisummary-preset-name" type="text"/>
+      <html:label for="aisummary-preset-default">Default preset:</html:label>
+      <html:select id="aisummary-preset-default" data-pref="defaultPreset"></html:select>
+    </html:div>
+    <html:textarea id="aisummary-preset-prompt" rows="12" style="width: 100%; font-family: monospace; margin-top: 6px;"></html:textarea>
+    <html:p style="opacity: 0.75; margin: 4px 0;">
+      Variables: {{title}} {{authors}} {{year}} {{date}} {{publication}} {{itemType}} {{doi}} {{url}}
+      {{abstract}} {{tags}} {{language}} {{fulltext}} {{question}}
+    </html:p>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Notes</html:h2></label>
+    <html:div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center;">
+      <html:label for="aisummary-duplicateMode">If the item already has a note from the same preset:</html:label>
+      <html:select id="aisummary-duplicateMode" data-pref="duplicateMode">
+        <html:option value="ask">Ask me</html:option>
+        <html:option value="replace">Replace it</html:option>
+        <html:option value="new">Add another note</html:option>
+        <html:option value="skip">Skip the item</html:option>
+      </html:select>
+
+      <html:label for="aisummary-noteTag">Tag notes with:</html:label>
+      <html:div style="display: flex; gap: 6px; align-items: center;">
+        <html:input id="aisummary-tagNotes" type="checkbox" data-pref="tagNotes"/>
+        <html:input id="aisummary-noteTag" type="text" data-pref="noteTag" style="max-width: 14em;"/>
+      </html:div>
+
+      <html:label for="aisummary-tagWithModel">Also tag with the model name:</html:label>
+      <html:input id="aisummary-tagWithModel" type="checkbox" data-pref="tagWithModel"/>
+
+      <html:label for="aisummary-addFooter">Add a footer with model, date and input source:</html:label>
+      <html:input id="aisummary-addFooter" type="checkbox" data-pref="addFooter"/>
+
+      <html:label for="aisummary-batchDelayMs">Pause between items in batch mode (ms):</html:label>
+      <html:input id="aisummary-batchDelayMs" type="number" min="0" step="500" data-pref="batchDelayMs" data-type="int" style="max-width: 10em;"/>
+    </html:div>
+  </groupbox>
+</vbox>

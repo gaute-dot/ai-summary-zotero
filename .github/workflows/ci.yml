@@ -1,0 +1,19 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node test/run.js
+      - run: for f in plugin/bootstrap.js plugin/lib/*.js plugin/content/preferences.js; do node --check "$f"; done
+      - run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xpi
+          path: dist/

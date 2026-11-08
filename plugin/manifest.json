@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "AI Summary for Zotero",
+  "version": "1.0.0",
+  "description": "Summarise articles with Claude, OpenAI, Gemini or Perplexity and save the result as a Zotero note. Custom system prompt, prompt presets, batch mode and Q&A notes.",
+  "homepage_url": "https://github.com/gaute-dot/ai-summary-zotero",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "applications": {
+    "zotero": {
+      "id": "ai-summary-zotero@gaute-dot.github.io",
+      "update_url": "https://github.com/gaute-dot/ai-summary-zotero/releases/latest/download/updates.json",
+      "strict_min_version": "6.999",
+      "strict_max_version": "9.*"
+    }
+  }
+}

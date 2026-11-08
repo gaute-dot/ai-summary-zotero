@@ -1,0 +1,30 @@
+/* Default preferences. Zotero loads this file automatically. */
+pref("extensions.aisummary.provider", "anthropic");
+
+pref("extensions.aisummary.model.anthropic", "claude-opus-5-5");
+pref("extensions.aisummary.model.openai", "gpt-5");
+pref("extensions.aisummary.model.gemini", "gemini-2.5-pro");
+pref("extensions.aisummary.model.perplexity", "sonar-pro");
+
+/* Empty = use the built-in default (see lib/core.js). */
+pref("extensions.aisummary.systemPrompt", "");
+pref("extensions.aisummary.presets", "");
+pref("extensions.aisummary.defaultPreset", "structured");
+
+pref("extensions.aisummary.language", "English");
+/* "text" = send extracted full text; "pdf" = send the PDF file itself when the provider supports it. */
+pref("extensions.aisummary.inputMode", "text");
+pref("extensions.aisummary.maxChars", 300000);
+pref("extensions.aisummary.maxTokens", 16000);
+/* Empty = provider default. Not sent to Claude (current Claude models reject it). */
+pref("extensions.aisummary.temperature", "");
+/* Claude only: low | medium | high | xhigh | max | "" (model default). */
+pref("extensions.aisummary.anthropicEffort", "medium");
+
+/* ask | replace | new | skip */
+pref("extensions.aisummary.duplicateMode", "ask");
+pref("extensions.aisummary.tagNotes", true);
+pref("extensions.aisummary.noteTag", "AI summary");
+pref("extensions.aisummary.tagWithModel", false);
+pref("extensions.aisummary.addFooter", true);
+pref("extensions.aisummary.batchDelayMs", 1000);

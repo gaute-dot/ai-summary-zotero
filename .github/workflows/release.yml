@@ -4,10 +4,14 @@ name: Release
 # the updates.json attached to the latest release.
 on:
   push:
+    # Branch pushes run only when these files change; tag pushes always run.
+    branches:
+      - "**"
     tags:
       - "v*"
     paths:
       - plugin/manifest.json
+      - .github/workflows/release.yml
   workflow_dispatch:
 permissions:
   contents: write

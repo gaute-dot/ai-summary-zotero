@@ -315,6 +315,30 @@ AISummary.Providers = {
     return label + ": HTTP " + status + (detail ? " – " + detail : "");
   },
 
+  /** Error with the readable message, and a replacement model if the provider named one. */
+  apiError(provider, status, json, model) {
+    const err = new Error(this.errorMessage(provider, status, json));
+    err.status = status;
+    const suggestion = this.suggestedModel(err.message, model);
+    if (suggestion) err.suggestedModel = suggestion;
+    return err;
+  },
+
+  /**
+   * Find a replacement model named in an error message, such as
+   * "Please update your code to use models/gemini-3.1-pro-preview".
+   */
+  suggestedModel(message, currentModel) {
+    const re = /\b(?:use|switch to|migrate to|replaced by|instead use|try)\s+(?:the\s+)?(?:model\s+)?[`'"\u201C]?(?:models\/)?([a-z][a-z0-9]*(?:[-.:_][a-z0-9]+)+)/gi;
+    let m;
+    while ((m = re.exec(String(message || "")))) {
+      const id = m[1].replace(/[.:]+$/, "");
+      const cur = String(currentModel || "").replace(/^models\//, "");
+      if (/\d/.test(id) && id !== cur && !/^(https?|www|the-)/.test(id)) return id;
+    }
+    return null;
+  },
+
   checkReady(provider, opts) {
     if (!this.adapters[provider]) throw new Error("Unknown provider: " + provider);
     if (!opts.apiKey) {
@@ -357,7 +381,7 @@ AISummary.Providers = {
         await AISummary.sleep(retryAfter ? Math.min(retryAfter * 1000, 60000) : this.RETRY_DELAYS[attempt]);
         continue;
       }
-      throw new Error(this.errorMessage(provider, status, json));
+      throw this.apiError(provider, status, json, opts && opts.model);
     }
   },
 
@@ -422,7 +446,7 @@ AISummary.Providers = {
           await AISummary.sleep(ra ? Math.min(ra * 1000, 60000) : this.RETRY_DELAYS[attempt]);
           continue;
         }
-        throw new Error(this.errorMessage(provider, response.status, json));
+        throw this.apiError(provider, response.status, json, opts.model);
       }
       const state = this.newStreamState();
       for await (const data of this.sseData(response.body, win.TextDecoder)) {
@@ -445,7 +469,7 @@ AISummary.Providers = {
     if (Array.isArray(spec)) return spec.slice();
     if (!apiKey) throw new Error("Enter an API key first.");
     const { status, json } = await this.httpJSON("GET", spec.url, spec.headers(apiKey), null, 30000);
-    if (status < 200 || status >= 300 || !json) throw new Error(this.errorMessage(provider, status, json));
+    if (status < 200 || status >= 300 || !json) throw this.apiError(provider, status, json, null);
     // Keep the provider's order (Anthropic lists newest first; OpenAI is sorted by date above).
     return [...new Set(spec.parse(json))];
   },

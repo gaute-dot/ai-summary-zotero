@@ -3,7 +3,7 @@ pref("extensions.aisummary.provider", "anthropic");
 
 pref("extensions.aisummary.model.anthropic", "claude-opus-5-5");
 pref("extensions.aisummary.model.openai", "gpt-5");
-pref("extensions.aisummary.model.gemini", "gemini-2.5-pro");
+pref("extensions.aisummary.model.gemini", "gemini-3.1-pro-preview");
 pref("extensions.aisummary.model.perplexity", "sonar-pro");
 
 /* Empty = use the built-in default (see lib/core.js). */
@@ -36,3 +36,6 @@ pref("extensions.aisummary.chatQuickQuestions", "");
 pref("extensions.aisummary.chatContextChars", 250000);
 pref("extensions.aisummary.chatRetrievalChars", 40000);
 pref("extensions.aisummary.chatStreaming", true);
+
+/* Literature search: openalex | semanticscholar | arxiv | crossref */
+pref("extensions.aisummary.litSource", "openalex");

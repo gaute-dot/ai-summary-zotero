@@ -135,6 +135,7 @@ AISummary.Actions = {
     const state = { remembered: null, total: items.length };
     const counts = { created: 0, replaced: 0, skipped: 0, failed: 0 };
     const errors = [];
+    let suggestedModel = null;
     try {
       for (let i = 0; i < items.length; i++) {
         if (AISummary.batch.cancel) break;
@@ -149,6 +150,7 @@ AISummary.Actions = {
         } catch (e) {
           counts.failed++;
           errors.push((item.getField("title") || item.key) + ": " + e.message);
+          if (e.suggestedModel) suggestedModel = e.suggestedModel;
           AISummary.log("Failed for " + item.key + ": " + (e.stack || e));
           line.setError();
         }
@@ -171,6 +173,10 @@ AISummary.Actions = {
     if (errors.length) {
       AISummary.alert(win, "Some notes could not be created:\n\n" + errors.slice(0, 8).join("\n\n")
         + (errors.length > 8 ? "\n\n…and " + (errors.length - 8) + " more (see Help → Debug Output)." : ""));
+      if (suggestedModel && Services.prompt.confirm(win, "AI Summary",
+        AISummary.PROVIDER_LABELS[provider] + " suggests the model \u201C" + suggestedModel + "\u201D.\n\nSwitch to it?")) {
+        AISummary.setPref("model." + provider, suggestedModel);
+      }
     }
   },
 

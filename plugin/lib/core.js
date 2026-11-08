@@ -132,6 +132,11 @@ var AISummary = {
     } catch (e) {
       this.log("Could not register chat panel: " + e);
     }
+    try {
+      this.LitPane.register();
+    } catch (e) {
+      this.log("Could not register literature search: " + e);
+    }
     for (const win of Zotero.getMainWindows()) {
       if (win.ZoteroPane) this.addToWindow(win);
     }
@@ -147,6 +152,7 @@ var AISummary = {
       this.Chat.listeners.clear();
     }
     if (this.ChatPane) this.ChatPane.unregister();
+    if (this.LitPane) this.LitPane.unregister();
     if (Zotero.AISummary === this) delete Zotero.AISummary;
   },
 

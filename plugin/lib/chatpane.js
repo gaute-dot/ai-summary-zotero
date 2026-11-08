@@ -20,6 +20,7 @@ AISummary.ChatPane = {
 .aisummary-chat details.ais-sources li { cursor: pointer; }
 .aisummary-chat details.ais-sources li:hover { text-decoration: underline; }
 .aisummary-chat .ais-status { font-size: 11px; opacity: .7; }
+.aisummary-chat .ais-libswitch { font-size: 12px; cursor: pointer; }
 .aisummary-chat .ais-status.ais-error { color: #c0392b; opacity: 1; }
 .aisummary-chat .ais-messages { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
 .aisummary-chat .ais-empty { opacity: .7; font-style: italic; }
@@ -37,6 +38,22 @@ AISummary.ChatPane = {
 .aisummary-chat .ais-cite { color: var(--accent-blue, #4072e5); cursor: pointer; }
 .aisummary-chat .ais-quick { display: flex; flex-wrap: wrap; gap: 4px; }
 .aisummary-chat .ais-quick button { border-radius: 10px; padding: 1px 8px; }
+.aisummary-chat .ais-topic { border: none; border-radius: 12px; padding: 2px 10px; cursor: pointer; font-weight: 500; }
+.aisummary-chat .ais-topic:disabled { opacity: .5; cursor: default; }
+.aisummary-chat .ais-t0 { background: #d6f0ec; color: #146b5e; }
+.aisummary-chat .ais-t1 { background: #fdebd3; color: #9a5b00; }
+.aisummary-chat .ais-t2 { background: #dceefa; color: #155d8b; }
+.aisummary-chat .ais-t3 { background: #e9e3f8; color: #5a3d99; }
+.aisummary-chat .ais-t4 { background: #fbe0e3; color: #a3283a; }
+.aisummary-chat .ais-t5 { background: #e6f2d9; color: #3f6b14; }
+@media (prefers-color-scheme: dark) {
+  .aisummary-chat .ais-t0 { background: #1f4a44; color: #bfeee6; }
+  .aisummary-chat .ais-t1 { background: #4d3510; color: #ffd9a3; }
+  .aisummary-chat .ais-t2 { background: #183d57; color: #bfe0f7; }
+  .aisummary-chat .ais-t3 { background: #3a2d5c; color: #ddd0fb; }
+  .aisummary-chat .ais-t4 { background: #5a1f28; color: #ffc9d0; }
+  .aisummary-chat .ais-t5 { background: #2e4419; color: #d3efb5; }
+}
 .aisummary-chat .ais-quote { display: flex; gap: 6px; align-items: flex-start; padding: 4px 6px; border-inline-start: 3px solid var(--accent-blue, #4072e5);
   background: var(--fill-quinary, rgba(127,127,127,.10)); font-style: italic; max-height: 8em; overflow: auto; white-space: pre-wrap; }
 .aisummary-chat .ais-quote span { flex: 1; }
@@ -252,8 +269,29 @@ class ChatView {
     const wrap = this.el("div", { class: "aisummary-chat" });
     root.appendChild(wrap);
 
+    // Whole-library switch
+    const libRow = this.el("label", { class: "ais-row ais-libswitch" });
+    const libBox = this.el("input", { type: "checkbox" });
+    libBox.checked = session.kind === "library";
+    libBox.disabled = session.busy;
+    libBox.addEventListener("change", () => {
+      if (libBox.checked) {
+        const libraryID = (this.item && this.item.libraryID) || Zotero.Libraries.userLibraryID;
+        Chat.startLibrary(libraryID);
+      } else {
+        Chat.unpin();
+      }
+    });
+    libRow.append(libBox, this.el("span", {}, "Search entire library"));
+    wrap.appendChild(libRow);
+
     // Banner
-    if (Chat.pinned === session) {
+    if (Chat.pinned === session && session.kind === "library") {
+      const banner = this.el("div", { class: "ais-banner" });
+      banner.appendChild(this.el("span", { class: "ais-label" }, "\uD83D\uDD0E " + session.label));
+      banner.appendChild(this.button("Unpin", () => Chat.unpin(), "Go back to chatting with the selected item"));
+      wrap.appendChild(banner);
+    } else if (Chat.pinned === session) {
       const banner = this.el("div", { class: "ais-banner" });
       const n = session.itemIDs.length;
       banner.appendChild(this.el("span", { class: "ais-label" },
@@ -263,7 +301,7 @@ class ChatView {
     }
 
     // Sources list for multi-source chats
-    if (session.itemIDs.length > 1) {
+    if (session.itemIDs.length > 1 && session.kind !== "library") {
       const details = this.el("details", { class: "ais-sources" });
       details.appendChild(this.el("summary", {}, "Sources"));
       const ol = this.el("ol");
@@ -285,7 +323,9 @@ class ChatView {
     this.lastBubble = null;
     if (!session.messages.length) {
       list.appendChild(this.el("div", { class: "ais-empty" },
-        session.itemIDs.length > 1
+        session.kind === "library"
+          ? "Ask a question about your library. Each question finds the most relevant items (using Zotero's full-text index) and answers from them, citing [1], [2] \u2026"
+          : session.itemIDs.length > 1
           ? "Ask a question across these sources. Answers cite sources as [1], [2] …"
           : "Ask anything about this item. Tip: select text in the PDF and click “Ask AI”."));
     }
@@ -303,12 +343,13 @@ class ChatView {
 
     // Quick questions and presets
     const quick = this.el("div", { class: "ais-quick" });
-    for (const q of Chat.quickQuestions()) {
-      if (session.itemIDs.length === 1 && /these sources/i.test(q)) continue;
-      const b = this.button(q, () => this.send(q));
+    Chat.quickQuestions().forEach((t, i) => {
+      if (session.itemIDs.length === 1 && session.kind !== "library" && /these sources/i.test(t.prompt)) return;
+      const b = this.button(t.label, () => this.send(t.prompt), t.prompt);
+      b.className = "ais-topic ais-t" + (i % 6);
       b.disabled = session.busy;
       quick.appendChild(b);
-    }
+    });
     const presetSel = this.el("select", { title: "Run one of your summary presets in the chat" });
     presetSel.appendChild(this.el("option", { value: "" }, "Run preset…"));
     for (const p of AISummary.getPresets()) presetSel.appendChild(this.el("option", { value: p.id }, p.name));
@@ -375,12 +416,24 @@ class ChatView {
     const body = this.el("div", { class: "ais-body" });
     if (m.content) {
       body.innerHTML = AISummary.Notes.md().render(AISummary.Notes.cleanMarkdown(m.content));
-      this.linkify(body, session);
+      this.linkify(body, session, m);
     } else if (!m.error) {
       body.appendChild(this.el("span", { class: "ais-pending" }, session.status && session.status.startsWith("Reading") ? session.status : "Thinking"));
     }
     bubble.appendChild(body);
-    if (m.citations && m.citations.length) {
+    if (m.sources && m.sources.length && !m.pending) {
+      const details = this.el("details", { class: "ais-sources ais-note" });
+      details.appendChild(this.el("summary", {}, "Items used (" + m.sources.length + ")"));
+      const ol = this.el("ol");
+      for (const src of m.sources) {
+        const li = this.el("li", { title: "Show in library" }, src.title);
+        li.addEventListener("click", () => this.pane.selectItem(src.itemID));
+        ol.appendChild(li);
+      }
+      details.appendChild(ol);
+      bubble.appendChild(details);
+    }
+        if (m.citations && m.citations.length) {
       const ol = this.el("ol", { class: "ais-note" });
       for (const c of m.citations) {
         const li = this.el("li");
@@ -396,6 +449,15 @@ class ChatView {
     if (m.stopped && m.content) notes.push("Stopped before the answer was finished.");
     if (m.truncated) notes.push("The answer hit the output token limit and may be cut off.");
     for (const n of notes) bubble.appendChild(this.el("div", { class: "ais-note" }, n));
+    if (m.suggestedModel && !m.pending) {
+      const provider = AISummary.getSettings().provider;
+      const row = this.el("div", { class: "ais-actions" });
+      row.appendChild(this.button("Use " + m.suggestedModel + " and try again", () => {
+        AISummary.setPref("model." + provider, m.suggestedModel);
+        AISummary.Chat.retryLast(session);
+      }));
+      bubble.appendChild(row);
+    }
     if (!m.pending && m.content) {
       const actions = this.el("div", { class: "ais-actions" });
       actions.appendChild(this.button("Copy", () => {
@@ -415,14 +477,14 @@ class ChatView {
   }
 
   /** Open links in the browser and make [1]-style citations clickable. */
-  linkify(container, session) {
+  linkify(container, session, msg) {
     for (const a of container.querySelectorAll("a[href]")) {
       a.addEventListener("click", (e) => {
         e.preventDefault();
         Zotero.launchURL(a.getAttribute("href"));
       });
     }
-    const ids = session.itemIDs;
+    const ids = msg && msg.sources ? msg.sources.map(x => x.itemID) : session.itemIDs;
     const walker = this.doc.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */);
     const nodes = [];
     while (walker.nextNode()) {
@@ -501,13 +563,7 @@ class ChatView {
       });
       return;
     }
-    AISummary.Chat.send(session, prompt).catch(e => this.flash(e.message, true));
-    // Show the preset name instead of the long prompt.
-    const userMsg = session.messages[session.messages.length - 2];
-    if (userMsg && userMsg.role === "user") {
-      userMsg.display = "Preset: " + preset.name;
-      this.render("full");
-    }
+    AISummary.Chat.send(session, prompt, { display: "Preset: " + preset.name });
   }
 
   async save() {

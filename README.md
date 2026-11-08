@@ -14,9 +14,11 @@ Right-click one or more items → **AI Summary** → pick what you want. The plu
 - **Chat with your sources** (the *AI Chat* section in the item pane, in the library and next to PDFs):
   - chat with one item, with several selected items, or with a whole collection;
   - answers cite sources as [1], [2] (click to jump to the item) and stream in as they are written;
-  - quick-question buttons and your presets are one click away;
+  - colored topic buttons (Summary, Topic, Background, Methods, Findings, Innovations, Challenges, Outlook, Compare) and your presets are one click away;
   - select text in the PDF reader and click **Ask AI** to explain, summarise, translate or critique the passage;
   - save one answer or the whole conversation as a Zotero note.
+- **Search entire library**: tick the box in AI Chat to ask questions across your whole library. Each question finds the most relevant items with Zotero's own full-text search and answers from them.
+- **Find papers** (item-pane section): search OpenAlex, Semantic Scholar, arXiv or Crossref (optionally only the last 12 months), see which results are already in your library, add new ones with one click (full metadata and open-access PDF when available), or let the AI discuss the results. A **Google Scholar ↗** button opens the same search in your browser.
 - **Ask a question (as note)**: type a question about the selected item(s); the answer is saved as an *AI Q&A* note.
 - **Duplicate handling**: when an item already has a note from the same preset, choose to be asked, replace it, add another note, or skip.
 - **Tags and footer**: notes are tagged (default `AI summary`, optionally also `ai:<model>`), and a footer records the model, date, preset and what input was used.
@@ -39,7 +41,7 @@ API keys:
 |---|---|---|
 | Anthropic Claude | console.anthropic.com | `claude-opus-5-5` |
 | OpenAI | platform.openai.com | `gpt-5` |
-| Google Gemini | aistudio.google.com | `gemini-2.5-pro` |
+| Google Gemini | aistudio.google.com | `gemini-3.1-pro-preview` |
 | Perplexity | perplexity.ai → API settings | `sonar-pro` |
 
 Model names change often. If a default model is no longer offered, press **Fetch models** and pick a current one.
@@ -65,6 +67,10 @@ The item needs a PDF, EPUB or web snapshot for a full-text summary. Without one,
 Zotero hides the item pane when several items are selected, so multi-item and collection chats are **pinned**: the chat stays in the pane while you click single items. Press **Unpin** to go back to chatting with the selected item.
 
 In the PDF reader, select text and click **Ask AI** in the popup. The passage is attached to the chat with shortcuts to explain, summarise, translate or critique it.
+
+**Whole library.** Tick **Search entire library** at the top of AI Chat. For each question the plugin searches your library (titles, notes and the full-text index) for the question's key words, takes the 20 best-matching items, and sends the most relevant passages from them. Each answer lists the items it used. Untick the box to go back.
+
+**Find papers.** The *Find papers* section starts with the selected item's title as the search. Choose a database, tick *New (last 12 months)* to see recent work first, and press Search. *Add to Zotero* looks the paper up by DOI or arXiv ID and saves it to the selected collection. Google Scholar has no public API and blocks automated searches, so it is offered as a link that opens in your browser.
 
 **How sources are sent.** If all sources together fit within *Send sources in full up to* (default 250,000 characters, roughly 60,000 tokens), the full text is sent with every question. On Claude it is cached between questions, which makes follow-ups faster and cheaper. Larger chats use a built-in keyword search (BM25) that runs inside Zotero: each question sends only the most relevant passages (default up to 40,000 characters), plus the title and metadata of every source. Nothing extra is uploaded and no extra services are needed.
 
@@ -146,7 +152,9 @@ plugin/
   lib/actions.js           Summarise, batch, Q&A, duplicate handling
   lib/chat.js              Chat sessions, source loading, prompts, saving chats
   lib/chatpane.js          AI Chat item-pane section and the reader "Ask AI" button
-  lib/retrieval.js         Local keyword search (BM25) for large chats
+  lib/retrieval.js         Local keyword search (BM25) and library search ranking
+  lib/litsearch.js         OpenAlex, Semantic Scholar, arXiv and Crossref search; Add to Zotero
+  lib/litpane.js           "Find papers" item-pane section
   lib/menu.js              Right-click menus
   locale/en-US/            Labels for the item-pane section
 test/run.js                Unit tests (no Zotero needed)
@@ -156,6 +164,7 @@ test/run.js                Unit tests (no Zotero needed)
 
 - **"Could not be installed"**: the plugin supports Zotero 7 to 10. Check **Help → About Zotero**.
 - **No API key fields in Settings → AI Summary**: enter keys from the right-click menu (AI Summary → AI provider → Enter API key…). Please report it, with the lines containing "AI Summary" from **Help → Debug Output Logging → View Output**.
+- **"Model not found" / "no longer available"**: pick another model in the dropdown. When the provider names a replacement, the plugin offers a button to switch to it.
 - **HTTP 401/403**: the key is wrong or has no credit. API usage is billed separately from ChatGPT Plus, Claude Pro, Gemini Advanced or Perplexity Pro subscriptions.
 
 ## Credits

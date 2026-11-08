@@ -40,6 +40,30 @@ AISummary.Retrieval = {
     return t.replace(/(ations|ation|ments|ment|ings|ing|ies|ed|es|s)$/, "");
   },
 
+  /** Distinct words worth searching for in the library (longest first, at most `max`). */
+  searchTerms(query, max = 8) {
+    const words = String(query).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'-]*[\p{L}\p{N}]/gu) || [];
+    const uniq = [...new Set(words.filter(w => w.length >= 3 && !this.STOPWORDS.has(w)))];
+    return uniq.sort((a, b) => b.length - a.length).slice(0, max);
+  },
+
+  /**
+   * Rank item IDs by how many search terms they match, giving rare terms
+   * more weight. hitsByTerm: Map(term -> [itemID]).
+   */
+  rankByTerms(hitsByTerm, limit) {
+    const scores = new Map();
+    for (const ids of hitsByTerm.values()) {
+      if (!ids.length) continue;
+      const weight = 1 / Math.log(2 + ids.length);
+      for (const id of ids) scores.set(id, (scores.get(id) || 0) + weight);
+    }
+    return [...scores.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .slice(0, limit)
+      .map(e => e[0]);
+  },
+
   /** Split text into overlapping chunks on paragraph boundaries. */
   chunk(text, size = this.CHUNK_CHARS, overlap = this.OVERLAP_CHARS) {
     const paras = String(text).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);

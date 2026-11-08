@@ -13,6 +13,8 @@ const FILES = [
   "lib/actions.js",
   "lib/chat.js",
   "lib/chatpane.js",
+  "lib/litsearch.js",
+  "lib/litpane.js",
   "lib/menu.js"
 ];
 

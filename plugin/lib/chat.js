@@ -29,12 +29,17 @@ AISummary.Chat = {
     "- Write in {{language}}."
   ].join("\n"),
 
+  // One topic button per line: "Label | question sent to the model".
   DEFAULT_QUICK_QUESTIONS: [
-    "What are the main findings?",
-    "Explain the method in simple terms.",
-    "What are the limitations?",
-    "What is the main argument, and how is it supported?",
-    "How do these sources agree or disagree?"
+    "Summary | Summarise the main points in a few short paragraphs.",
+    "Topic | What is the topic, and what research question is addressed?",
+    "Background | What background and earlier research does this build on?",
+    "Methods | Explain the method and data in simple terms.",
+    "Findings | What are the main findings? Include the key numbers.",
+    "Innovations | What is new or original compared with earlier work?",
+    "Challenges | What are the limitations, weaknesses and open challenges?",
+    "Outlook | What are the implications, and what future research is suggested?",
+    "Compare | How do these sources agree or disagree?"
   ].join("\n"),
 
   /* ---------- settings ---------- */
@@ -56,11 +61,19 @@ AISummary.Chat = {
     return custom && custom.trim() ? custom : this.DEFAULT_SYSTEM_PROMPT;
   },
 
+  /** Topic buttons: [{ label, prompt }]. Lines without "|" use the text as both. */
   quickQuestions() {
     const raw = AISummary.getPref("chatQuickQuestions");
     const text = raw && raw.trim() ? raw : this.DEFAULT_QUICK_QUESTIONS;
-    return text.split("\n").map(s => s.trim()).filter(Boolean);
+    return text.split("\n").map(line => line.trim()).filter(Boolean).map((line) => {
+      const i = line.indexOf("|");
+      if (i < 0) return { label: line, prompt: line };
+      const label = line.slice(0, i).trim();
+      const prompt = line.slice(i + 1).trim();
+      return { label: label || prompt, prompt: prompt || label };
+    });
   },
+
 
   /* ---------- sessions ---------- */
 
@@ -159,22 +172,7 @@ AISummary.Chat = {
     session.loading = (async () => {
       const settings = this.settings();
       const items = Zotero.Items.get(session.itemIDs).filter(Boolean);
-      const docs = [];
-      const textSettings = Object.assign({}, settings, { inputMode: "text", maxChars: Infinity });
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (items.length > 1) {
-          session.status = "Reading sources " + (i + 1) + " of " + items.length + "…";
-          this.notify(session, "status");
-        }
-        let cached = this.textCache.get(item.id);
-        if (!cached) {
-          const ctx = await AISummary.Context.collect(item, textSettings, settings.provider);
-          cached = { text: ctx.text, source: ctx.source, vars: ctx.vars };
-          this.textCache.set(item.id, cached);
-        }
-        docs.push({ index: i + 1, itemID: item.id, title: cached.vars.title || "Untitled", vars: cached.vars, text: cached.text, source: cached.source });
-      }
+      const docs = await this.loadDocs(session, items, "Reading sources");
       const total = docs.reduce((n, d) => n + d.text.length, 0);
       session.mode = total <= settings.chatContextChars ? "full" : "excerpts";
       if (session.mode === "excerpts") session.index = AISummary.Retrieval.buildIndex(docs);
@@ -196,6 +194,80 @@ AISummary.Chat = {
     }
   },
 
+  /** Read text and metadata for items (cached for the Zotero session). */
+  async loadDocs(session, items, verb) {
+    const settings = this.settings();
+    const textSettings = Object.assign({}, settings, { inputMode: "text", maxChars: Infinity });
+    const docs = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (items.length > 1) {
+        session.status = verb + " " + (i + 1) + " of " + items.length + "\u2026";
+        this.notify(session, "status");
+      }
+      let cached = this.textCache.get(item.id);
+      if (!cached) {
+        const ctx = await AISummary.Context.collect(item, textSettings, settings.provider);
+        cached = { text: ctx.text, source: ctx.source, vars: ctx.vars };
+        this.textCache.set(item.id, cached);
+      }
+      docs.push({ index: i + 1, itemID: item.id, title: cached.vars.title || "Untitled", vars: cached.vars, text: cached.text, source: cached.source });
+    }
+    return docs;
+  },
+
+  /* ---------- whole library ---------- */
+
+  LIBRARY_TOP: 20,
+
+  startLibrary(libraryID) {
+    const lib = Zotero.Libraries.get(libraryID);
+    const s = {
+      id: this.nextID++, kind: "library", label: "Whole library" + (lib && lib.name ? ": " + lib.name : ""),
+      itemIDs: [], libraryID, collectionID: null, messages: [], quote: "", busy: false, abort: null,
+      status: "Each question searches the library for the most relevant items.", docs: null, index: null,
+      mode: "excerpts", loading: null
+    };
+    this.pin(s);
+    return s;
+  },
+
+  /** Find the items that best match a question, using Zotero's own search (incl. full text). */
+  async findLibraryItems(libraryID, query) {
+    const R = AISummary.Retrieval;
+    const terms = R.searchTerms(query);
+    const hits = new Map();
+    for (const term of terms) {
+      const search = new Zotero.Search();
+      search.libraryID = libraryID;
+      search.addCondition("quicksearch-everything", "contains", term);
+      const ids = await search.search();
+      const top = new Set();
+      for (const it of Zotero.Items.get(ids)) {
+        if (!it) continue;
+        const parent = it.isRegularItem() ? it : it.parentItem;
+        if (parent && parent.isRegularItem() && !parent.deleted) top.add(parent.id);
+      }
+      hits.set(term, [...top]);
+    }
+    return R.rankByTerms(hits, this.LIBRARY_TOP);
+  },
+
+  async prepareLibrary(session, question) {
+    session.status = "Searching the library\u2026";
+    this.notify(session, "status");
+    const ids = await this.findLibraryItems(session.libraryID, this.questionText(question));
+    const items = Zotero.Items.get(ids).filter(Boolean);
+    const docs = await this.loadDocs(session, items, "Reading item");
+    session.docs = docs;
+    session.mode = "excerpts";
+    session.index = AISummary.Retrieval.buildIndex(docs);
+    for (const d of docs) if (!session.itemIDs.includes(d.itemID)) session.itemIDs.push(d.itemID);
+    session.status = docs.length
+      ? "Answer based on the " + docs.length + " most relevant items for this question"
+      : "No items in the library matched this question";
+  },
+
   docHeader(d) {
     return "<title>" + d.title + "</title>\n<metadata>\n" + AISummary.metadataBlock(d.vars) + "\n</metadata>";
   },
@@ -205,7 +277,12 @@ AISummary.Chat = {
     const docs = session.docs || [];
     const system = AISummary.renderTemplate(this.systemPrompt(), { language: settings.language });
     let systemCached;
-    if (session.mode === "full") {
+    const sourcesBlock = () => "<sources>\n" + docs.map(d =>
+      '<source index="' + d.index + '">\n' + this.docHeader(d) + "\n</source>"
+    ).join("\n") + "\n</sources>";
+    if (session.kind === "library") {
+      systemCached = null;
+    } else if (session.mode === "full") {
       systemCached = "<documents>\n" + docs.map(d =>
         '<document index="' + d.index + '">\n' + this.docHeader(d) + "\n<content>\n"
         + (d.text || "(No full text available: only the metadata above.)") + "\n</content>\n</document>"
@@ -226,7 +303,12 @@ AISummary.Chat = {
       const excerpts = picked.map(c =>
         '<excerpt source="' + c.doc + '" title="' + String(c.title).replace(/"/g, "'") + '">\n' + c.text + "\n</excerpt>"
       ).join("\n");
-      last.content = "<excerpts>\n" + (excerpts || "(No matching passages were found.)") + "\n</excerpts>\n\n" + last.content;
+      const block = "<excerpts>\n" + (excerpts || "(No matching passages were found.)") + "\n</excerpts>\n\n";
+      last.content = session.kind === "library"
+        ? (docs.length
+          ? "These items from my Zotero library matched my question:\n" + sourcesBlock() + "\n\n" + block
+          : "(No items in my library matched this question.)\n\n") + last.content
+        : block + last.content;
     }
     return { system, systemCached, messages };
   },
@@ -243,14 +325,17 @@ AISummary.Chat = {
     return content;
   },
 
-  async send(session, text) {
+  /** options.display: short text shown in the chat instead of a long prompt. */
+  async send(session, text, options = {}) {
     if (session.busy) return;
     const content = this.composeUserMessage(session, text);
     if (!content) return;
     const settings = this.settings();
     const provider = settings.provider;
 
-    session.messages.push({ role: "user", content });
+    const userMsg = { role: "user", content };
+    if (options.display) userMsg.display = options.display;
+    session.messages.push(userMsg);
     const answer = { role: "assistant", content: "", pending: true };
     session.messages.push(answer);
     session.busy = true;
@@ -259,7 +344,11 @@ AISummary.Chat = {
     const win = Zotero.getMainWindow();
     session.abort = win && win.AbortController ? new win.AbortController() : null;
     try {
-      await this.ensureLoaded(session);
+      if (session.kind === "library") await this.prepareLibrary(session, content);
+      else await this.ensureLoaded(session);
+      if (session.kind === "library") {
+        answer.sources = session.docs.map(d => ({ index: d.index, itemID: d.itemID, title: d.title }));
+      }
       this.notify(session, "status");
       // The pending answer must not be part of the request.
       session.messages.pop();
@@ -302,6 +391,7 @@ AISummary.Chat = {
       } else {
         AISummary.log("Chat failed: " + (e && (e.stack || e)));
         answer.error = e.message || String(e);
+        if (e.suggestedModel) answer.suggestedModel = e.suggestedModel;
       }
     } finally {
       answer.pending = false;
@@ -311,6 +401,16 @@ AISummary.Chat = {
     }
   },
 
+  /** Remove a failed answer and ask the same question again. */
+  retryLast(session) {
+    if (session.busy) return;
+    const msgs = session.messages;
+    if (!msgs.length || msgs[msgs.length - 1].role !== "assistant") return;
+    msgs.pop();
+    const user = msgs.pop();
+    if (user) this.send(session, user.content, { display: user.display });
+  },
+
   stop(session) {
     if (session.abort) session.abort.abort();
   },
@@ -318,7 +418,7 @@ AISummary.Chat = {
   /* ---------- notes ---------- */
 
   sourcesHTML(session) {
-    const docs = session.docs || Zotero.Items.get(session.itemIDs).filter(Boolean).map((it, i) => ({
+    const docs = (session.kind !== "library" && session.docs) || Zotero.Items.get(session.itemIDs).filter(Boolean).map((it, i) => ({
       index: i + 1, title: it.getField("title"), vars: AISummary.Context.vars(it)
     }));
     const esc = s => AISummary.Notes.escape(s);

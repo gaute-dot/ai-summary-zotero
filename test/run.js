@@ -22,7 +22,7 @@ const sandbox = {
   Services: {}
 };
 vm.createContext(sandbox);
-for (const f of ["lib/vendor/markdown-it.min.js", "lib/core.js", "lib/providers.js", "lib/notes.js", "lib/retrieval.js", "lib/chat.js"]) {
+for (const f of ["lib/vendor/markdown-it.min.js", "lib/core.js", "lib/providers.js", "lib/notes.js", "lib/retrieval.js", "lib/chat.js", "lib/litsearch.js"]) {
   vm.runInContext(fs.readFileSync(path.join(root, f), "utf8"), sandbox, { filename: f });
 }
 const A = vm.runInContext("AISummary", sandbox);
@@ -364,9 +364,134 @@ test("chat quote is prepended once and question text is recovered for titles", (
 
 test("chat defaults: quick questions and system prompt", () => {
   assert.ok(A.Chat.quickQuestions().length >= 4);
-  prefs["extensions.aisummary.chatQuickQuestions"] = "One\n\n Two ";
-  assert.deepEqual(plain(A.Chat.quickQuestions()), ["One", "Two"]);
+  assert.equal(A.Chat.quickQuestions()[0].label, "Summary");
+  prefs["extensions.aisummary.chatQuickQuestions"] = "One\n\n Two | Second question ";
+  assert.deepEqual(plain(A.Chat.quickQuestions()), [
+    { label: "One", prompt: "One" }, { label: "Two", prompt: "Second question" }
+  ]);
   delete prefs["extensions.aisummary.chatQuickQuestions"];
+});
+
+/* ---------- model suggestions ---------- */
+
+test("suggested replacement model is found in provider errors", () => {
+  const P = A.Providers;
+  const gemini = "This model models/gemini-2.5-pro is no longer available to new users. Please update your code to use models/gemini-3.1-pro-preview for the latest features and improvements. We recommend you to use the Interactions API (https://aistudio.google.com/docs/get-started).";
+  assert.equal(P.suggestedModel(gemini, "gemini-2.5-pro"), "gemini-3.1-pro-preview");
+  assert.equal(P.suggestedModel("The model `gpt-4-32k` was deprecated, please switch to gpt-5.1.", "gpt-4-32k"), "gpt-5.1");
+  assert.equal(P.suggestedModel("Invalid API key. Please use a valid key.", "x"), null);
+  assert.equal(P.suggestedModel("use models/gemini-2.5-pro", "gemini-2.5-pro"), null);
+  const err = P.apiError("gemini", 404, { error: { message: gemini } }, "gemini-2.5-pro");
+  assert.equal(err.suggestedModel, "gemini-3.1-pro-preview");
+  assert.equal(err.status, 404);
+});
+
+/* ---------- whole-library search ---------- */
+
+test("library search terms and ranking", () => {
+  const terms = A.Retrieval.searchTerms("What does the research say about teacher burnout and the role of school leadership?");
+  assert.ok(terms.includes("burnout") && terms.includes("leadership") && terms.includes("teacher"));
+  assert.ok(!terms.includes("the") && !terms.includes("what"));
+  assert.ok(terms.length <= 8);
+  const hits = new Map([["burnout", [1, 2]], ["teacher", [1, 2, 3, 4, 5, 6, 7, 8]], ["leadership", [2, 9]]]);
+  const ranked = A.Retrieval.rankByTerms(hits, 3);
+  assert.equal(ranked[0], 2); // matches all three terms
+  assert.equal(ranked.length, 3);
+});
+
+test("library chat puts the matched sources and excerpts in the last message only", () => {
+  const s = {
+    kind: "library", itemIDs: [], messages: [{ role: "user", content: "Burnout?" }], mode: "excerpts",
+    docs: [{ index: 1, title: "Burnout study", vars: { title: "Burnout study" }, text: "Teacher burnout rose sharply." }]
+  };
+  s.index = A.Retrieval.buildIndex(s.docs);
+  const r = A.Chat.buildRequest(s, chatSettings);
+  assert.equal(r.systemCached, null);
+  assert.match(r.messages[0].content, /^These items from my Zotero library matched my question:\n<sources>[\s\S]*Burnout study[\s\S]*<excerpts>[\s\S]*burnout rose[\s\S]*Burnout\?$/);
+  s.docs = []; s.index = A.Retrieval.buildIndex([]);
+  assert.match(A.Chat.buildRequest(s, chatSettings).messages[0].content, /No items in my library matched/);
+});
+
+/* ---------- literature search ---------- */
+
+const LS = A.LitSearch;
+const NOW = new Date("2026-11-08T12:00:00Z");
+
+test("literature search URLs", () => {
+  let r = LS.buildRequest("openalex", "teacher burnout", { recent: true, now: NOW });
+  assert.match(r.url, /^https:\/\/api\.openalex\.org\/works\?search=teacher%20burnout&per-page=20/);
+  assert.match(r.url, /filter=from_publication_date:2025-11-08&sort=publication_date:desc$/);
+  r = LS.buildRequest("semanticscholar", "x y", { recent: true, now: NOW });
+  assert.match(r.url, /paper\/search\?query=x%20y&limit=20&fields=.*&year=2025-$/);
+  r = LS.buildRequest("arxiv", 'large "language" models', {});
+  assert.equal(r.responseType, "text");
+  assert.match(r.url, /search_query=all:large\+AND\+all:language\+AND\+all:models&start=0&max_results=20&sortBy=relevance$/);
+  r = LS.buildRequest("crossref", "burnout", { recent: true, now: NOW });
+  assert.match(r.url, /rows=20&select=.*&filter=from-pub-date:2025-11-08&sort=published&order=desc$/);
+  assert.equal(LS.scholarURL("a b&c"), "https://scholar.google.com/scholar?q=a%20b%26c");
+});
+
+test("OpenAlex results, including inverted-index abstracts", () => {
+  const out = LS.parse("openalex", { results: [{
+    id: "https://openalex.org/W1", doi: "https://doi.org/10.1/ABC", display_name: "Burnout in schools",
+    publication_year: 2024, publication_date: "2024-03-01",
+    authorships: [{ author: { display_name: "Ada Lovelace" } }, { author: { display_name: "Alan Turing" } }],
+    primary_location: { landing_page_url: "https://example.org/p", source: { display_name: "Journal of Education" } },
+    cited_by_count: 12, abstract_inverted_index: { "Teachers": [0], "report": [1], "stress.": [2] }
+  }] });
+  assert.deepEqual(plain(out[0]), {
+    title: "Burnout in schools", authors: ["Ada Lovelace", "Alan Turing"], year: 2024, date: "2024-03-01",
+    venue: "Journal of Education", doi: "10.1/ABC", arxiv: "", url: "https://example.org/p",
+    abstract: "Teachers report stress.", citations: 12, type: "", source: "openalex"
+  });
+});
+
+test("Semantic Scholar, arXiv and Crossref results", () => {
+  const s2 = LS.parse("semanticscholar", { data: [{
+    title: "T", authors: [{ name: "A B" }], year: 2023, venue: "V", abstract: "abs", citationCount: 3,
+    externalIds: { DOI: "10.2/x", ArXiv: "2301.00001" }, url: "https://s2/p", publicationDate: "2023-01-02"
+  }] })[0];
+  assert.equal(s2.doi, "10.2/x");
+  assert.equal(s2.arxiv, "2301.00001");
+  assert.equal(s2.citations, 3);
+
+  const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.01234v2</id>
+    <published>2024-01-03T18:00:00Z</published>
+    <title>Attention &amp; Memory:
+      A Study</title>
+    <summary>  We study &lt;b&gt;things&lt;/b&gt;.  </summary>
+    <author><name>Jane Doe</name></author>
+    <author><name>John Roe</name></author>
+    <arxiv:doi xmlns:arxiv="http://arxiv.org/schemas/atom">10.3/y</arxiv:doi>
+    <arxiv:journal_ref xmlns:arxiv="http://arxiv.org/schemas/atom">J. Stuff 1 (2024)</arxiv:journal_ref>
+  </entry></feed>`;
+  const ax = LS.parse("arxiv", atom)[0];
+  assert.equal(ax.title, "Attention & Memory: A Study");
+  assert.equal(ax.arxiv, "2401.01234");
+  assert.deepEqual(plain(ax.authors), ["Jane Doe", "John Roe"]);
+  assert.equal(ax.date, "2024-01-03");
+  assert.equal(ax.doi, "10.3/y");
+  assert.equal(ax.venue, "J. Stuff 1 (2024)");
+  assert.equal(ax.abstract, "We study <b>things</b>.");
+
+  const cr = LS.parse("crossref", { message: { items: [{
+    DOI: "10.4/z", title: ["Crossref title"], author: [{ given: "Kari", family: "Nordmann" }, { name: "Team X" }],
+    issued: { "date-parts": [[2022, 5]] }, "container-title": ["Nordic Journal"], "is-referenced-by-count": 7,
+    abstract: "<jats:p>Some &amp; abstract</jats:p>", URL: "https://doi.org/10.4/z"
+  }] } })[0];
+  assert.deepEqual(plain(cr.authors), ["Kari Nordmann", "Team X"]);
+  assert.equal(cr.date, "2022-05");
+  assert.equal(cr.abstract, "Some & abstract");
+  assert.equal(cr.venue, "Nordic Journal");
+});
+
+test("results are formatted for the AI and names are split for Zotero", () => {
+  const text = LS.resultsForPrompt([{ title: "T", authors: ["A", "B", "C", "D"], year: 2020, venue: "V", doi: "10/x", abstract: "x".repeat(800) }]);
+  assert.match(text, /^\[R1\] T — A, B, C et al\., 2020, V — doi:10\/x\nx{700}…$/);
+  assert.deepEqual(plain(LS.splitName("Kari Anne Nordmann")), { firstName: "Kari Anne", lastName: "Nordmann", creatorType: "author" });
+  assert.equal(LS.splitName("UNESCO").fieldMode, 1);
 });
 
 process.on("beforeExit", () => {

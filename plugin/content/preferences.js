@@ -180,6 +180,17 @@ var AISummaryPrefs = {
       this.status(core.PROVIDER_LABELS[p] + " works. Reply: \u201C" + reply + "\u201D");
     } catch (e) {
       this.status(e.message, true);
+      if (e.suggestedModel) {
+        const use = this.html("button", { style: "margin-inline-start: 8px;" }, "Use " + e.suggestedModel);
+        use.addEventListener("click", () => {
+          core.setPref("model." + p, e.suggestedModel);
+          modelInput.value = e.suggestedModel;
+          const select = this.$("aisummary-model-select-" + p);
+          if (select) this.fillModelSelect(p, select, modelInput);
+          this.status(core.PROVIDER_LABELS[p] + " model set to " + e.suggestedModel + ". Press Test again to check it.");
+        });
+        this.$("aisummary-status").appendChild(use);
+      }
     } finally {
       btn.disabled = false;
     }

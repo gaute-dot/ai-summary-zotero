@@ -143,16 +143,28 @@ var AISummaryPrefs = {
 
   initSystemPrompt() {
     const core = this.core;
-    const ta = this.$("aisummary-systemPrompt");
-    ta.value = core.getSystemPrompt();
+    this.bindDefaultable("aisummary-systemPrompt", "systemPrompt", core.DEFAULT_SYSTEM_PROMPT);
+    this.bindDefaultable("aisummary-chatSystemPrompt", "chatSystemPrompt", core.Chat.DEFAULT_SYSTEM_PROMPT);
+    this.bindDefaultable("aisummary-chatQuickQuestions", "chatQuickQuestions", core.Chat.DEFAULT_QUICK_QUESTIONS);
+  },
+
+  /** A textarea whose pref is stored empty while it equals the built-in default. */
+  bindDefaultable(id, prefKey, defaultText) {
+    const core = this.core;
+    const ta = this.$(id);
+    if (!ta) return;
+    const stored = core.getPref(prefKey);
+    ta.value = stored && stored.trim() ? stored : defaultText;
     ta.addEventListener("input", () => {
-      const v = ta.value;
-      core.setPref("systemPrompt", v.trim() === core.DEFAULT_SYSTEM_PROMPT.trim() ? "" : v);
+      core.setPref(prefKey, ta.value.trim() === defaultText.trim() ? "" : ta.value);
     });
-    this.$("aisummary-systemPrompt-reset").addEventListener("click", () => {
-      core.setPref("systemPrompt", "");
-      ta.value = core.DEFAULT_SYSTEM_PROMPT;
-    });
+    const reset = this.$(id + "-reset");
+    if (reset) {
+      reset.addEventListener("click", () => {
+        core.setPref(prefKey, "");
+        ta.value = defaultText;
+      });
+    }
   },
 
   /* ---------- presets ---------- */

@@ -28,3 +28,11 @@ pref("extensions.aisummary.noteTag", "AI summary");
 pref("extensions.aisummary.tagWithModel", false);
 pref("extensions.aisummary.addFooter", true);
 pref("extensions.aisummary.batchDelayMs", 1000);
+
+/* Chat */
+pref("extensions.aisummary.chatSystemPrompt", "");
+pref("extensions.aisummary.chatQuickQuestions", "");
+/* Sources up to this size are sent in full; larger ones are searched for relevant passages. */
+pref("extensions.aisummary.chatContextChars", 250000);
+pref("extensions.aisummary.chatRetrievalChars", 40000);
+pref("extensions.aisummary.chatStreaming", true);

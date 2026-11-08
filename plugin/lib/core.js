@@ -127,6 +127,11 @@ var AISummary = {
     } catch (e) {
       this.log("Could not register preference pane: " + e);
     }
+    try {
+      this.ChatPane.register();
+    } catch (e) {
+      this.log("Could not register chat panel: " + e);
+    }
     for (const win of Zotero.getMainWindows()) {
       if (win.ZoteroPane) this.addToWindow(win);
     }
@@ -135,6 +140,13 @@ var AISummary = {
   shutdown() {
     for (const win of [...this.windows]) this.removeFromWindow(win);
     this.batch.cancel = true;
+    if (this.Chat) {
+      for (const session of [...this.Chat.sessions.values(), this.Chat.pinned]) {
+        if (session && session.abort) session.abort.abort();
+      }
+      this.Chat.listeners.clear();
+    }
+    if (this.ChatPane) this.ChatPane.unregister();
     if (Zotero.AISummary === this) delete Zotero.AISummary;
   },
 

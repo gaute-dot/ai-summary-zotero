@@ -3,12 +3,21 @@
 
 /**
  * Provider adapters. Each adapter has:
- *   buildRequest(opts)  -> { url, headers, body }      (pure, unit-tested)
- *   parseResponse(json) -> { text, citations, truncated }
- *   listModels: { url, headers(key), parse(json) } or a static list
+ *   buildRequest(opts)              -> { url, headers, body }      (pure, unit-tested)
+ *   parseResponse(json)             -> { text, citations, truncated }
+ *   streamEvent(data, state)        updates state from one SSE "data:" payload
+ *   listModels                      { url, headers(key), parse(json) } or a static list
  *
- * opts: { model, apiKey, system, user, pdf: {base64, filename}|null,
- *         maxTokens, temperature, effort }
+ * opts: {
+ *   model, apiKey,
+ *   system,          instructions
+ *   systemCached,    optional large, stable text (documents) appended to the system prompt;
+ *                    marked for prompt caching on Claude, first in the prefix elsewhere
+ *   messages,        [{ role: "user" | "assistant", content: string }]  (or `user` for one turn)
+ *   user,            single user message (used when `messages` is absent)
+ *   pdf,             { base64, filename } attached to the first user message, or null
+ *   maxTokens, temperature, effort, stream
+ * }
  */
 AISummary.Providers = {
   ANTHROPIC_VERSION: "2026-10-21",
@@ -19,30 +28,59 @@ AISummary.Providers = {
     return provider === "anthropic" || provider === "openai" || provider === "gemini";
   },
 
+  messagesOf(o) {
+    const list = o.messages && o.messages.length ? o.messages : [{ role: "user", content: o.user || "" }];
+    return list.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") }));
+  },
+
+  systemText(o) {
+    return o.systemCached ? o.system + "\n\n" + o.systemCached : o.system;
+  },
+
+  newStreamState() {
+    return { text: "", citations: [], truncated: false, done: false };
+  },
+
   adapters: {
     anthropic: {
       buildRequest(o) {
-        const content = [];
-        if (o.pdf) {
-          content.push({
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: o.pdf.base64 }
-          });
-        }
-        content.push({ type: "text", text: o.user });
+        const P = AISummary.Providers;
+        let pdfDone = !o.pdf;
+        const messages = P.messagesOf(o).map(m => {
+          if (!pdfDone && m.role === "user") {
+            pdfDone = true;
+            return {
+              role: "user",
+              content: [
+                { type: "document", source: { type: "base64", media_type: "application/pdf", data: o.pdf.base64 } },
+                { type: "text", text: m.content }
+              ]
+            };
+          }
+          return m;
+        });
         const body = {
           model: o.model,
           max_tokens: o.maxTokens,
-          system: o.system,
-          messages: [{ role: "user", content }]
+          system: o.systemCached
+            ? [
+              { type: "text", text: o.system },
+              { type: "text", text: o.systemCached, cache_control: { type: "ephemeral" } }
+            ]
+            : o.system,
+          messages
         };
+        // Multi-turn: also cache the growing conversation.
+        if (messages.length > 1) body.cache_control = { type: "ephemeral" };
         if (o.effort) body.output_config = { effort: o.effort };
+        if (o.stream) body.stream = true;
         const headers = {
           "content-type": "application/json",
           "x-api-key": o.apiKey,
-          "anthropic-version": AISummary.Providers.ANTHROPIC_VERSION
+          "anthropic-version": P.ANTHROPIC_VERSION,
+          "anthropic-dangerous-direct-browser-access": "true"
         };
-        if (AISummary.Providers.ANTHROPIC_FALLBACK_MODELS.includes(o.model)) {
+        if (P.ANTHROPIC_FALLBACK_MODELS.includes(o.model)) {
           headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
           body.fallbacks = "default";
         }
@@ -59,6 +97,21 @@ AISummary.Providers = {
           .join("");
         return { text, citations: [], truncated: json.stop_reason === "max_tokens" };
       },
+      streamEvent(data, s) {
+        const ev = JSON.parse(data);
+        if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+          s.text += ev.delta.text;
+        } else if (ev.type === "message_delta" && ev.delta) {
+          if (ev.delta.stop_reason === "refusal") {
+            throw new Error("Claude declined the request. The partial answer was discarded.");
+          }
+          if (ev.delta.stop_reason === "max_tokens") s.truncated = true;
+        } else if (ev.type === "message_stop") {
+          s.done = true;
+        } else if (ev.type === "error") {
+          throw new Error("Claude: " + ((ev.error && ev.error.message) || "stream error"));
+        }
+      },
       listModels: {
         url: "https://api.anthropic.com/v1/models?limit=1000",
         headers: key => ({ "x-api-key": key, "anthropic-version": AISummary.Providers.ANTHROPIC_VERSION }),
@@ -68,23 +121,26 @@ AISummary.Providers = {
 
     openai: {
       buildRequest(o) {
-        const userContent = [];
-        if (o.pdf) {
-          userContent.push({
-            type: "file",
-            file: { filename: o.pdf.filename, file_data: "data:application/pdf;base64," + o.pdf.base64 }
-          });
+        const P = AISummary.Providers;
+        let pdfDone = !o.pdf;
+        const messages = [{ role: "system", content: P.systemText(o) }];
+        for (const m of P.messagesOf(o)) {
+          if (!pdfDone && m.role === "user") {
+            pdfDone = true;
+            messages.push({
+              role: "user",
+              content: [
+                { type: "file", file: { filename: o.pdf.filename, file_data: "data:application/pdf;base64," + o.pdf.base64 } },
+                { type: "text", text: m.content }
+              ]
+            });
+          } else {
+            messages.push(m);
+          }
         }
-        userContent.push({ type: "text", text: o.user });
-        const body = {
-          model: o.model,
-          messages: [
-            { role: "system", content: o.system },
-            { role: "user", content: userContent }
-          ],
-          max_completion_tokens: o.maxTokens
-        };
+        const body = { model: o.model, messages, max_completion_tokens: o.maxTokens };
         if (o.temperature !== null && o.temperature !== undefined) body.temperature = o.temperature;
+        if (o.stream) body.stream = true;
         return {
           url: "https://api.openai.com/v1/chat/completions",
           headers: { "content-type": "application/json", authorization: "Bearer " + o.apiKey },
@@ -97,6 +153,19 @@ AISummary.Providers = {
         if (msg.refusal) throw new Error("OpenAI declined the request: " + msg.refusal);
         return { text: msg.content || "", citations: [], truncated: choice.finish_reason === "length" };
       },
+      streamEvent(data, s) {
+        if (data.trim() === "[DONE]") {
+          s.done = true;
+          return;
+        }
+        const ev = JSON.parse(data);
+        if (ev.error) throw new Error("OpenAI: " + (ev.error.message || "stream error"));
+        const choice = (ev.choices || [])[0];
+        if (!choice) return;
+        if (choice.delta && typeof choice.delta.content === "string") s.text += choice.delta.content;
+        if (choice.delta && choice.delta.refusal) throw new Error("OpenAI declined the request: " + choice.delta.refusal);
+        if (choice.finish_reason === "length") s.truncated = true;
+      },
       listModels: {
         url: "https://api.openai.com/v1/models",
         headers: key => ({ authorization: "Bearer " + key }),
@@ -108,18 +177,27 @@ AISummary.Providers = {
 
     gemini: {
       buildRequest(o) {
+        const P = AISummary.Providers;
         const model = String(o.model).replace(/^models\//, "");
-        const parts = [];
-        if (o.pdf) parts.push({ inline_data: { mime_type: "application/pdf", data: o.pdf.base64 } });
-        parts.push({ text: o.user });
+        let pdfDone = !o.pdf;
+        const contents = P.messagesOf(o).map(m => {
+          const parts = [];
+          if (!pdfDone && m.role === "user") {
+            pdfDone = true;
+            parts.push({ inline_data: { mime_type: "application/pdf", data: o.pdf.base64 } });
+          }
+          parts.push({ text: m.content });
+          return { role: m.role === "assistant" ? "model" : "user", parts };
+        });
         const generationConfig = { maxOutputTokens: o.maxTokens };
         if (o.temperature !== null && o.temperature !== undefined) generationConfig.temperature = o.temperature;
+        const base = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model);
         return {
-          url: "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+          url: base + (o.stream ? ":streamGenerateContent?alt=sse" : ":generateContent"),
           headers: { "content-type": "application/json", "x-goog-api-key": o.apiKey },
           body: {
-            systemInstruction: { parts: [{ text: o.system }] },
-            contents: [{ role: "user", parts }],
+            systemInstruction: { parts: [{ text: P.systemText(o) }] },
+            contents,
             generationConfig
           }
         };
@@ -139,6 +217,20 @@ AISummary.Providers = {
         }
         return { text, citations: [], truncated: cand.finishReason === "MAX_TOKENS" };
       },
+      streamEvent(data, s) {
+        const ev = JSON.parse(data);
+        if (ev.error) throw new Error("Gemini: " + (ev.error.message || "stream error"));
+        if (ev.promptFeedback && ev.promptFeedback.blockReason) {
+          throw new Error("Gemini blocked the request: " + ev.promptFeedback.blockReason);
+        }
+        const cand = (ev.candidates || [])[0];
+        if (!cand) return;
+        for (const p of (cand.content && cand.content.parts) || []) {
+          if (typeof p.text === "string" && !p.thought) s.text += p.text;
+        }
+        if (cand.finishReason === "MAX_TOKENS") s.truncated = true;
+        if (cand.finishReason) s.done = true;
+      },
       listModels: {
         url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
         headers: key => ({ "x-goog-api-key": key }),
@@ -150,36 +242,58 @@ AISummary.Providers = {
 
     perplexity: {
       buildRequest(o) {
+        const P = AISummary.Providers;
         const body = {
           model: o.model,
-          messages: [
-            { role: "system", content: o.system },
-            { role: "user", content: o.user }
-          ],
+          messages: [{ role: "system", content: P.systemText(o) }].concat(P.messagesOf(o)),
           max_tokens: o.maxTokens
         };
         if (o.temperature !== null && o.temperature !== undefined) body.temperature = o.temperature;
+        if (o.stream) body.stream = true;
         return {
           url: "https://api.perplexity.ai/chat/completions",
           headers: { "content-type": "application/json", authorization: "Bearer " + o.apiKey },
           body
         };
       },
+      citationsOf(json) {
+        if (Array.isArray(json.search_results) && json.search_results.length) {
+          return json.search_results.map(r => ({ title: r.title || r.url, url: r.url }));
+        }
+        if (Array.isArray(json.citations) && json.citations.length) {
+          return json.citations.map(u => ({ title: u, url: u }));
+        }
+        return null;
+      },
       parseResponse(json) {
         const choice = (json.choices || [])[0] || {};
-        let text = (choice.message && choice.message.content) || "";
-        // Reasoning models prepend their reasoning in <think> tags.
-        text = text.replace(/<think>[\s\S]*?<\/think>\s*/g, "");
-        let citations = [];
-        if (Array.isArray(json.search_results) && json.search_results.length) {
-          citations = json.search_results.map(r => ({ title: r.title || r.url, url: r.url }));
-        } else if (Array.isArray(json.citations)) {
-          citations = json.citations.map(u => ({ title: u, url: u }));
-        }
+        const text = AISummary.Providers.stripThink((choice.message && choice.message.content) || "");
+        const citations = this.citationsOf(json) || [];
         return { text, citations, truncated: choice.finish_reason === "length" };
+      },
+      streamEvent(data, s) {
+        if (data.trim() === "[DONE]") {
+          s.done = true;
+          return;
+        }
+        const ev = JSON.parse(data);
+        if (ev.error) throw new Error("Perplexity: " + (ev.error.message || "stream error"));
+        const citations = this.citationsOf(ev);
+        if (citations) s.citations = citations;
+        const choice = (ev.choices || [])[0];
+        if (!choice) return;
+        if (choice.delta && typeof choice.delta.content === "string") s.text += choice.delta.content;
+        if (choice.finish_reason === "length") s.truncated = true;
       },
       listModels: ["sonar", "sonar-pro", "sonar-reasoning-pro", "sonar-deep-research"]
     }
+  },
+
+  /** Remove <think>…</think> reasoning (and an unfinished one while streaming). */
+  stripThink(text) {
+    return String(text)
+      .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+      .replace(/<think>[\s\S]*$/, "");
   },
 
   errorMessage(provider, status, json) {
@@ -198,6 +312,20 @@ AISummary.Providers = {
     return label + ": HTTP " + status + (detail ? " – " + detail : "");
   },
 
+  checkReady(provider, opts) {
+    if (!this.adapters[provider]) throw new Error("Unknown provider: " + provider);
+    if (!opts.apiKey) {
+      throw new Error("No API key set for " + AISummary.PROVIDER_LABELS[provider] + ". Add one in Settings → AI Summary.");
+    }
+    if (!opts.model) throw new Error("No model set for " + AISummary.PROVIDER_LABELS[provider] + ".");
+  },
+
+  isRetryable(status) {
+    return status === 429 || status === 529 || status >= 500 || status === 0;
+  },
+
+  RETRY_DELAYS: [5000, 20000],
+
   async httpJSON(method, url, headers, body, timeoutMs) {
     const xhr = await Zotero.HTTP.request(method, url, {
       headers,
@@ -214,25 +342,98 @@ AISummary.Providers = {
     return { status: xhr.status, json, retryAfter };
   },
 
-  /** Send one generation request. Retries on rate limits and server errors. */
+  /** Send one request and wait for the whole answer. Retries on rate limits and server errors. */
   async generate(provider, opts) {
+    this.checkReady(provider, opts);
     const adapter = this.adapters[provider];
-    if (!adapter) throw new Error("Unknown provider: " + provider);
-    if (!opts.apiKey) {
-      throw new Error("No API key set for " + AISummary.PROVIDER_LABELS[provider] + ". Add one in Settings → AI Summary.");
-    }
-    if (!opts.model) throw new Error("No model set for " + AISummary.PROVIDER_LABELS[provider] + ".");
-    const req = adapter.buildRequest(opts);
-    const delays = [5000, 20000];
+    const req = adapter.buildRequest(Object.assign({}, opts, { stream: false }));
     for (let attempt = 0; ; attempt++) {
       const { status, json, retryAfter } = await this.httpJSON("POST", req.url, req.headers, req.body);
       if (status >= 200 && status < 300 && json) return adapter.parseResponse(json);
-      const retryable = status === 429 || status === 529 || status >= 500 || status === 0;
-      if (retryable && attempt < delays.length) {
-        await AISummary.sleep(retryAfter ? Math.min(retryAfter * 1000, 60000) : delays[attempt]);
+      if (this.isRetryable(status) && attempt < this.RETRY_DELAYS.length) {
+        await AISummary.sleep(retryAfter ? Math.min(retryAfter * 1000, 60000) : this.RETRY_DELAYS[attempt]);
         continue;
       }
       throw new Error(this.errorMessage(provider, status, json));
+    }
+  },
+
+  /** Split a byte stream of server-sent events into "data:" payloads. */
+  async *sseData(body, TextDecoderCtor) {
+    const reader = body.getReader();
+    const decoder = new TextDecoderCtor();
+    let buf = "";
+    const flush = function* (final) {
+      let m;
+      while ((m = buf.match(/\r?\n\r?\n/))) {
+        const raw = buf.slice(0, m.index);
+        buf = buf.slice(m.index + m[0].length);
+        const data = raw.split(/\r?\n/)
+          .filter(l => l.startsWith("data:"))
+          .map(l => l.slice(5).replace(/^ /, ""))
+          .join("\n");
+        if (data) yield data;
+      }
+      if (final && buf.trim()) {
+        const data = buf.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).replace(/^ /, "")).join("\n");
+        buf = "";
+        if (data) yield data;
+      }
+    };
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      yield* flush(false);
+    }
+    buf += decoder.decode();
+    yield* flush(true);
+  },
+
+  /**
+   * Stream an answer. Calls onText(textSoFar) as text arrives.
+   * Falls back to a normal request when streaming is not available.
+   */
+  async generateStream(provider, opts, onText, signal) {
+    this.checkReady(provider, opts);
+    const win = Zotero.getMainWindow && Zotero.getMainWindow();
+    if (!win || typeof win.fetch !== "function") {
+      const res = await this.generate(provider, opts);
+      onText(res.text);
+      return res;
+    }
+    const adapter = this.adapters[provider];
+    const req = adapter.buildRequest(Object.assign({}, opts, { stream: true }));
+    for (let attempt = 0; ; attempt++) {
+      const response = await win.fetch(req.url, {
+        method: "POST",
+        headers: req.headers,
+        body: JSON.stringify(req.body),
+        signal
+      });
+      if (!response.ok) {
+        let json = null;
+        try { json = JSON.parse(await response.text()); } catch (e) { /* not JSON */ }
+        if (this.isRetryable(response.status) && attempt < this.RETRY_DELAYS.length) {
+          const ra = Number(response.headers.get("retry-after")) || 0;
+          await AISummary.sleep(ra ? Math.min(ra * 1000, 60000) : this.RETRY_DELAYS[attempt]);
+          continue;
+        }
+        throw new Error(this.errorMessage(provider, response.status, json));
+      }
+      const state = this.newStreamState();
+      for await (const data of this.sseData(response.body, win.TextDecoder)) {
+        try {
+          adapter.streamEvent(data, state);
+        } catch (e) {
+          if (e instanceof SyntaxError) continue; // keep-alive or partial line
+          throw e;
+        }
+        onText(provider === "perplexity" ? this.stripThink(state.text) : state.text);
+        if (state.done) break;
+      }
+      if (provider === "perplexity") state.text = this.stripThink(state.text);
+      return { text: state.text, citations: state.citations, truncated: state.truncated };
     }
   },
 

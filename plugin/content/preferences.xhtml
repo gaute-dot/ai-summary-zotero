@@ -110,6 +110,34 @@
   </groupbox>
 
   <groupbox>
+    <label><html:h2>Chat</html:h2></label>
+    <html:p style="opacity: 0.75; margin: 4px 0;">
+      Chat with an item in the “AI Chat” section of the item pane. Right-click several items or a collection to chat
+      across them. In the PDF reader, select text and click “Ask AI”.
+    </html:p>
+    <html:div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center;">
+      <html:label for="aisummary-chatContextChars">Send sources in full up to (characters):</html:label>
+      <html:input id="aisummary-chatContextChars" type="number" min="10000" step="10000" data-pref="chatContextChars" data-type="int" style="max-width: 10em;"/>
+
+      <html:label for="aisummary-chatRetrievalChars">Otherwise send the most relevant passages, up to (characters):</html:label>
+      <html:input id="aisummary-chatRetrievalChars" type="number" min="2000" step="2000" data-pref="chatRetrievalChars" data-type="int" style="max-width: 10em;"/>
+
+      <html:label for="aisummary-chatStreaming">Show answers as they are written (streaming):</html:label>
+      <html:input id="aisummary-chatStreaming" type="checkbox" data-pref="chatStreaming"/>
+    </html:div>
+    <html:p style="margin: 8px 0 2px;">Chat system prompt:</html:p>
+    <html:textarea id="aisummary-chatSystemPrompt" rows="9" style="width: 100%; font-family: monospace;"></html:textarea>
+    <html:div class="aisummary-row" style="margin-top: 4px;">
+      <html:button id="aisummary-chatSystemPrompt-reset">Restore default</html:button>
+    </html:div>
+    <html:p style="margin: 8px 0 2px;">Quick-question buttons (one per line):</html:p>
+    <html:textarea id="aisummary-chatQuickQuestions" rows="5" style="width: 100%;"></html:textarea>
+    <html:div class="aisummary-row" style="margin-top: 4px;">
+      <html:button id="aisummary-chatQuickQuestions-reset">Restore default</html:button>
+    </html:div>
+  </groupbox>
+
+  <groupbox>
     <label><html:h2>Notes</html:h2></label>
     <html:div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center;">
       <html:label for="aisummary-duplicateMode">If the item already has a note from the same preset:</html:label>

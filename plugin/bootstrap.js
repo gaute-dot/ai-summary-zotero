@@ -8,8 +8,11 @@ const FILES = [
   "lib/core.js",
   "lib/providers.js",
   "lib/context.js",
+  "lib/retrieval.js",
   "lib/notes.js",
   "lib/actions.js",
+  "lib/chat.js",
+  "lib/chatpane.js",
   "lib/menu.js"
 ];
 

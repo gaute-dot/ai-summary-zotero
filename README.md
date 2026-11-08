@@ -125,7 +125,7 @@ node test/run.js
 
 ```
 plugin/
-  manifest.json            Plugin metadata (Zotero 7–9)
+  manifest.json            Plugin metadata (Zotero 7–10)
   bootstrap.js             Startup / shutdown, loads lib/
   prefs.js                 Default settings
   content/preferences.*    Settings pane

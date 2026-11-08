@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "AI Summary for Zotero",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Summarise and chat with articles using Claude, OpenAI, Gemini or Perplexity. Saves summaries and chats as Zotero notes. Custom system prompts, presets, batch mode, collection chat.",
   "homepage_url": "https://github.com/gaute-dot/ai-summary-zotero",
   "icons": {
@@ -13,7 +13,7 @@
       "id": "ai-summary-zotero@gaute-dot.github.io",
       "update_url": "https://github.com/gaute-dot/ai-summary-zotero/releases/latest/download/updates.json",
       "strict_min_version": "6.999",
-      "strict_max_version": "9.*"
+      "strict_max_version": "10.*"
     }
   }
 }

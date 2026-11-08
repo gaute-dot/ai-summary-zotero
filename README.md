@@ -121,7 +121,23 @@ Requirements: `zip`, `python3`, and Node.js for the tests.
 node test/run.js
 ```
 
-`build.sh` writes `dist/ai-summary-zotero-<version>.xpi` and `dist/updates.json`. To publish a release, create a GitHub release tagged `v<version>` and attach both files. Zotero then finds updates automatically.
+`build.sh` writes `dist/ai-summary-zotero-<version>.xpi` and `dist/updates.json`.
+
+### Publishing an update
+
+1. Raise `"version"` in `plugin/manifest.json` (for example to `1.2.0`) and commit.
+2. Push a matching tag:
+
+   ```bash
+   git tag v1.2.0
+   ```
+
+   ```bash
+   git push origin v1.2.0
+   ```
+
+3. The *Release* workflow tests and builds the plugin and publishes a GitHub release with the `.xpi` and `updates.json`.
+   Zotero picks it up with **Tools → Plugins → gear icon → Check for Updates** (or automatically within a day).
 
 ## Project layout
 

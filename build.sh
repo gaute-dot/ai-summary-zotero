@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION=$(python3 -c "import json;print(json.load(open('plugin/manifest.json'))['version'])")
+MAXV=$(python3 -c "import json;print(json.load(open('plugin/manifest.json'))['applications']['zotero']['strict_max_version'])")
 ID=$(python3 -c "import json;print(json.load(open('plugin/manifest.json'))['applications']['zotero']['id'])")
 REPO="gaute-dot/ai-summary-zotero"
 mkdir -p dist
@@ -17,7 +18,7 @@ cat > dist/updates.json <<JSON
         {
           "version": "${VERSION}",
           "update_link": "https://github.com/${REPO}/releases/download/v${VERSION}/ai-summary-zotero-${VERSION}.xpi",
-          "applications": { "zotero": { "strict_min_version": "6.999" } }
+          "applications": { "zotero": { "strict_min_version": "6.999", "strict_max_version": "${MAXV}" } }
         }
       ]
     }

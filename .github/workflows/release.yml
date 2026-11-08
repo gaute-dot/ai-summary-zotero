@@ -1,0 +1,32 @@
+name: Release
+# Push a tag like v1.2.0 (matching "version" in plugin/manifest.json) to publish a release.
+# Zotero finds updates through the updates.json attached to the latest release.
+on:
+  push:
+    tags:
+      - "v*"
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check that the tag matches the plugin version
+        run: |
+          VERSION=$(python3 -c "import json;print(json.load(open('plugin/manifest.json'))['version'])")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest version $VERSION"; exit 1
+          fi
+      - run: node test/run.js
+      - run: ./build.sh
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.xpi dist/updates.json \
+            --title "AI Summary for Zotero $GITHUB_REF_NAME" \
+            --notes "Install: download the .xpi below, then in Zotero open Tools → Plugins → gear icon → Install Plugin From File…. Installed copies update automatically through Tools → Plugins → Check for Updates."

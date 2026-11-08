@@ -59,7 +59,24 @@ AISummary.addToWindow = function (win) {
     }
 
     popup.appendChild(el("menuseparator"));
-    add(popup, "Model: " + AISummary.PROVIDER_LABELS[provider] + " – " + model, null, { disabled: "true" });
+    const setup = el("menu", { label: "AI provider: " + AISummary.PROVIDER_LABELS[provider] + " \u2013 " + model });
+    const setupPopup = el("menupopup");
+    for (const p of AISummary.PROVIDER_IDS) {
+      const hasKey = !!AISummary.getApiKey(p);
+      add(setupPopup, "Use " + AISummary.PROVIDER_LABELS[p] + (hasKey ? "" : " (no API key)"), () => {
+        AISummary.setPref("provider", p);
+        if (!hasKey) AISummary.promptApiKey(win, p);
+      }, { type: "radio", checked: p === provider ? "true" : "false" });
+    }
+    setupPopup.appendChild(el("menuseparator"));
+    for (const p of AISummary.PROVIDER_IDS) {
+      add(setupPopup, (AISummary.getApiKey(p) ? "Change " : "Enter ") + AISummary.PROVIDER_LABELS[p] + " API key\u2026",
+        () => AISummary.promptApiKey(win, p));
+    }
+    setupPopup.appendChild(el("menuseparator"));
+    add(setupPopup, "Change model for " + AISummary.PROVIDER_LABELS[provider] + "\u2026", () => AISummary.promptModel(win, provider));
+    setup.appendChild(setupPopup);
+    popup.appendChild(setup);
     add(popup, "Settings…", () => AISummary.openSettings());
   });
 

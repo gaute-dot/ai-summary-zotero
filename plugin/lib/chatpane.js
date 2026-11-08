@@ -475,9 +475,10 @@ class ChatView {
     const session = this.currentSession();
     if (!session || session.busy) return;
     if (!String(text || "").trim() && !session.quote) return;
-    const provider = AISummary.getSettings().provider;
-    if (!AISummary.getApiKey(provider)) {
-      this.flash("No API key set for " + AISummary.PROVIDER_LABELS[provider] + ". Open Settings → AI Summary.", true);
+    if (!AISummary.getApiKey(AISummary.getSettings().provider)) {
+      AISummary.ensureApiKey(this.doc.defaultView).then((ok) => {
+        if (ok) this.send(text);
+      });
       return;
     }
     if (this.input) this.input.value = "";
@@ -494,9 +495,10 @@ class ChatView {
       language: AISummary.getSettings().language, fulltext: "", question: ""
     });
     const prompt = AISummary.renderTemplate(preset.prompt, vars);
-    const provider = AISummary.getSettings().provider;
-    if (!AISummary.getApiKey(provider)) {
-      this.flash("No API key set for " + AISummary.PROVIDER_LABELS[provider] + ". Open Settings → AI Summary.", true);
+    if (!AISummary.getApiKey(AISummary.getSettings().provider)) {
+      AISummary.ensureApiKey(this.doc.defaultView).then((ok) => {
+        if (ok) this.runPreset(id);
+      });
       return;
     }
     AISummary.Chat.send(session, prompt).catch(e => this.flash(e.message, true));

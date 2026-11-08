@@ -31,6 +31,8 @@ Right-click one or more items → **AI Summary** → pick what you want. The plu
 3. Open **Settings → AI Summary** (Zotero → Settings on macOS, Edit → Settings on Windows/Linux).
 4. Paste an API key for at least one provider, choose the provider to use, check the model name, and press **Test**.
 
+You can also set everything from the right-click menu, without opening settings: right-click an item → **AI Summary → AI provider** → choose a provider, **Enter … API key…**, or **Change model…**. If no key is saved when you start a summary or a chat, the plugin asks for one.
+
 API keys:
 
 | Provider | Where to get a key | Default model |
@@ -141,6 +143,12 @@ plugin/
   locale/en-US/            Labels for the item-pane section
 test/run.js                Unit tests (no Zotero needed)
 ```
+
+## Troubleshooting
+
+- **"Could not be installed"**: the plugin supports Zotero 7 to 10. Check **Help → About Zotero**.
+- **No API key fields in Settings → AI Summary**: enter keys from the right-click menu (AI Summary → AI provider → Enter API key…). Please report it, with the lines containing "AI Summary" from **Help → Debug Output Logging → View Output**.
+- **HTTP 401/403**: the key is wrong or has no credit. API usage is billed separately from ChatGPT Plus, Claude Pro, Gemini Advanced or Perplexity Pro subscriptions.
 
 ## Credits
 

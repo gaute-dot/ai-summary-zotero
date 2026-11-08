@@ -31,6 +31,8 @@ var AISummaryPrefs = {
   init() {
     if (this.initialized || !this.$("aisummary-pane") || !this.core) return;
     this.initialized = true;
+    const hint = this.$("aisummary-fallback-hint");
+    if (hint) hint.hidden = true;
     this.buildProviderRows();
     this.bindSimplePrefs();
     this.initSystemPrompt();
@@ -264,5 +266,17 @@ var AISummaryPrefs = {
   }
 };
 
-// The pane's onload attribute calls init(); this is a fallback if it already loaded.
-if (document.getElementById("aisummary-pane")) AISummaryPrefs.init();
+// The pane's onload attribute should call init(). Newer Zotero versions may not
+// run it, so also try now and keep checking briefly until the pane is in place.
+(function startAISummaryPrefs() {
+  let tries = 0;
+  const attempt = () => {
+    try {
+      AISummaryPrefs.init();
+    } catch (e) {
+      Zotero.logError(e);
+    }
+    if (!AISummaryPrefs.initialized && tries++ < 50) setTimeout(attempt, 100);
+  };
+  attempt();
+})();

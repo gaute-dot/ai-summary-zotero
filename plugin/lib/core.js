@@ -255,6 +255,49 @@ var AISummary = {
     }
   },
 
+  /**
+   * Ask for an API key in a simple dialog. Works even when the settings pane
+   * cannot be shown. Returns true when a key was saved.
+   */
+  async promptApiKey(win, provider) {
+    provider = provider || this.getSettings().provider;
+    const label = this.PROVIDER_LABELS[provider] || provider;
+    const where = {
+      anthropic: "console.anthropic.com \u2192 API keys",
+      openai: "platform.openai.com \u2192 API keys",
+      gemini: "aistudio.google.com \u2192 Get API key",
+      perplexity: "perplexity.ai \u2192 Settings \u2192 API"
+    }[provider] || "the provider's website";
+    const input = { value: "" };
+    const ok = Services.prompt.promptPassword(
+      win || null, "AI Summary \u2013 " + label + " API key",
+      "Paste your " + label + " API key (from " + where + ").\n"
+        + (this.getApiKey(provider) ? "A key is already saved; a new one replaces it. Leave empty to remove it." : ""),
+      input
+    );
+    if (!ok) return false;
+    await this.setApiKey(provider, input.value);
+    return !!this.getApiKey(provider);
+  },
+
+  /** Ask for a model name in a simple dialog. */
+  promptModel(win, provider) {
+    provider = provider || this.getSettings().provider;
+    const input = { value: this.getModel(provider) };
+    const ok = Services.prompt.prompt(
+      win || null, "AI Summary \u2013 model",
+      "Model name for " + this.PROVIDER_LABELS[provider] + ":", input, null, { value: false }
+    );
+    if (ok && input.value.trim()) this.setPref("model." + provider, input.value.trim());
+  },
+
+  /** Make sure the active provider has a key, asking for one if needed. */
+  async ensureApiKey(win) {
+    const provider = this.getSettings().provider;
+    if (this.getApiKey(provider)) return true;
+    return this.promptApiKey(win, provider);
+  },
+
   /* ---------- templating ---------- */
 
   renderTemplate(template, vars) {

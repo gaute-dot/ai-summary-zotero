@@ -10,7 +10,11 @@
         <html:option value="perplexity">Perplexity</html:option>
       </html:select>
     </html:div>
-    <html:table id="aisummary-provider-table" style="width: 100%; border-spacing: 4px;">
+    <html:p id="aisummary-fallback-hint" style="padding: 6px; border-radius: 4px; background: rgba(230,160,0,.18); margin: 4px 0;">
+      If no API key fields appear below, enter keys from the item menu instead: right-click an item →
+      AI Summary → AI provider → Enter API key…
+    </html:p>
+        <html:table id="aisummary-provider-table" style="width: 100%; border-spacing: 4px;">
       <html:thead>
         <html:tr>
           <html:th style="text-align: start;">Provider</html:th>

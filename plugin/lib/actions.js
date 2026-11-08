@@ -123,11 +123,7 @@ AISummary.Actions = {
     }
     job.settings = AISummary.getSettings();
     const provider = job.settings.provider;
-    if (!AISummary.getApiKey(provider)) {
-      AISummary.alert(win, "No API key set for " + AISummary.PROVIDER_LABELS[provider] + ".\n\nOpen Settings → AI Summary and add one.");
-      AISummary.openSettings();
-      return;
-    }
+    if (!(await AISummary.ensureApiKey(win))) return;
 
     AISummary.batch.running = true;
     AISummary.batch.cancel = false;

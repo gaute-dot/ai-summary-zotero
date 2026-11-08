@@ -191,6 +191,20 @@ var AISummary = {
     return (this.getPref("model." + provider) || "").trim();
   },
 
+  /** Model names last fetched from the provider (kept so the dropdown is filled next time). */
+  getModelCache(provider) {
+    try {
+      const list = JSON.parse(this.getPref("modelCache." + provider) || "[]");
+      return Array.isArray(list) ? list.filter(x => typeof x === "string") : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setModelCache(provider, list) {
+    this.setPref("modelCache." + provider, JSON.stringify(list || []));
+  },
+
   getSystemPrompt() {
     const custom = this.getPref("systemPrompt");
     return custom && custom.trim() ? custom : this.DEFAULT_SYSTEM_PROMPT;
@@ -280,14 +294,37 @@ var AISummary = {
     return !!this.getApiKey(provider);
   },
 
-  /** Ask for a model name in a simple dialog. */
-  promptModel(win, provider) {
+  /** Let the user pick a model from the provider's list, or type one. */
+  async promptModel(win, provider) {
     provider = provider || this.getSettings().provider;
-    const input = { value: this.getModel(provider) };
-    const ok = Services.prompt.prompt(
-      win || null, "AI Summary \u2013 model",
-      "Model name for " + this.PROVIDER_LABELS[provider] + ":", input, null, { value: false }
-    );
+    const label = this.PROVIDER_LABELS[provider];
+    let list = this.getModelCache(provider);
+    const apiKey = this.getApiKey(provider);
+    if (apiKey || !this.Providers.adapters[provider].listModels.url) {
+      try {
+        list = await this.Providers.listModels(provider, apiKey);
+        this.setModelCache(provider, list);
+      } catch (e) {
+        this.log("Fetching models failed: " + e);
+        if (!list.length) this.alert(win, "Could not fetch the model list: " + e.message + "\n\nYou can type a model name instead.");
+      }
+    }
+    const current = this.getModel(provider);
+    if (list.length) {
+      const OTHER = "Other (type a name)\u2026";
+      const choices = list.concat([OTHER]);
+      const selected = { value: Math.max(0, list.indexOf(current)) };
+      const ok = Services.prompt.select(win || null, "AI Summary \u2013 model",
+        "Choose the " + label + " model (current: " + (current || "none") + "):", choices, selected);
+      if (!ok) return;
+      if (choices[selected.value] !== OTHER) {
+        this.setPref("model." + provider, choices[selected.value]);
+        return;
+      }
+    }
+    const input = { value: current };
+    const ok = Services.prompt.prompt(win || null, "AI Summary \u2013 model",
+      "Model name for " + label + ":", input, null, { value: false });
     if (ok && input.value.trim()) this.setPref("model." + provider, input.value.trim());
   },
 

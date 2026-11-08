@@ -6,7 +6,7 @@ Right-click one or more items → **AI Summary** → pick what you want. The plu
 
 ## Features
 
-- **Choose the AI provider and model**: Anthropic Claude, OpenAI, Google Gemini or Perplexity. Type any model name, or use **Fetch models** to list the models your API key can use.
+- **Choose the AI provider and model**: Anthropic Claude, OpenAI, Google Gemini or Perplexity. Type any model name, or pick from the dropdown. It is filled automatically when a key is saved; **Fetch models** refreshes it.
 - **Your own system prompt**: general rules for every summary (tone, strictness, format, language).
 - **Prompt presets**: built-in presets for *Structured summary*, *Short summary (TL;DR)*, *Critical appraisal*, *Methods and data extraction* and *Literature review notes*. Edit them or add your own in settings.
 - **Template variables**: `{{title}}`, `{{authors}}`, `{{year}}`, `{{date}}`, `{{publication}}`, `{{itemType}}`, `{{doi}}`, `{{url}}`, `{{abstract}}`, `{{tags}}`, `{{language}}`, `{{fulltext}}`, `{{question}}`.

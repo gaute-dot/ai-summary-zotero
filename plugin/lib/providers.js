@@ -169,7 +169,10 @@ AISummary.Providers = {
       listModels: {
         url: "https://api.openai.com/v1/models",
         headers: key => ({ authorization: "Bearer " + key }),
+        // Newest first.
         parse: json => (json.data || [])
+          .slice()
+          .sort((a, b) => (b.created || 0) - (a.created || 0))
           .map(m => m.id)
           .filter(id => /^(gpt-|o\d|chatgpt-)/.test(id) && !/(audio|realtime|tts|transcribe|image|search|embedding)/.test(id))
       }
@@ -443,7 +446,8 @@ AISummary.Providers = {
     if (!apiKey) throw new Error("Enter an API key first.");
     const { status, json } = await this.httpJSON("GET", spec.url, spec.headers(apiKey), null, 30000);
     if (status < 200 || status >= 300 || !json) throw new Error(this.errorMessage(provider, status, json));
-    return [...new Set(spec.parse(json))].sort();
+    // Keep the provider's order (Anthropic lists newest first; OpenAI is sorted by date above).
+    return [...new Set(spec.parse(json))];
   },
 
   /** Tiny request to confirm key + model work. */

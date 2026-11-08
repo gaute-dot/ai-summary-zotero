@@ -90,38 +90,82 @@ var AISummaryPrefs = {
       tr.appendChild(keyTd);
 
       const modelTd = this.html("td");
-      const listId = "aisummary-models-" + p;
-      const model = this.html("input", { type: "text", id: "aisummary-model-" + p, list: listId, style: "width: 100%; min-width: 12em;" });
+      const select = this.html("select", { id: "aisummary-model-select-" + p, style: "width: 100%; min-width: 12em;" });
+      const model = this.html("input", {
+        type: "text", id: "aisummary-model-" + p, placeholder: "Type a model name",
+        style: "width: 100%; min-width: 12em; margin-top: 2px;"
+      });
       model.value = core.getModel(p);
       model.addEventListener("input", () => core.setPref("model." + p, model.value.trim()));
-      const datalist = this.html("datalist", { id: listId });
-      modelTd.append(model, datalist);
+      select.addEventListener("change", () => {
+        if (select.value === this.OTHER) {
+          model.hidden = false;
+          model.focus();
+          return;
+        }
+        model.value = select.value;
+        model.hidden = true;
+        core.setPref("model." + p, select.value);
+        this.status(core.PROVIDER_LABELS[p] + " model set to " + select.value + ".");
+      });
+      modelTd.append(select, model);
       tr.appendChild(modelTd);
+      this.fillModelSelect(p, select, model);
 
       const btnTd = this.html("td", { style: "white-space: nowrap;" });
       const fetchBtn = this.html("button", {}, "Fetch models");
-      fetchBtn.addEventListener("click", () => this.fetchModels(p, key, datalist, fetchBtn));
+      fetchBtn.addEventListener("click", () => this.fetchModels(p, key, select, model, fetchBtn, false));
       const testBtn = this.html("button", {}, "Test");
       testBtn.addEventListener("click", () => this.testProvider(p, key, model, testBtn));
       btnTd.append(fetchBtn, testBtn);
       tr.appendChild(btnTd);
 
       tbody.appendChild(tr);
+
+      // Load the list in the background the first time a key is available.
+      if (key.value && !core.getModelCache(p).length) {
+        this.fetchModels(p, key, select, model, fetchBtn, true);
+      }
+      key.addEventListener("change", () => {
+        if (key.value.trim()) this.fetchModels(p, key, select, model, fetchBtn, true);
+      });
     }
   },
 
-  async fetchModels(p, keyInput, datalist, btn) {
+  OTHER: "__other__",
+
+  /** Dropdown of known models, plus the current one and "Other…". */
+  fillModelSelect(p, select, model) {
     const core = this.core;
+    const current = core.getModel(p);
+    const list = core.getModelCache(p);
+    while (select.firstChild) select.firstChild.remove();
+    if (current && !list.includes(current)) {
+      select.appendChild(this.html("option", { value: current }, current + (list.length ? " (not in fetched list)" : "")));
+    }
+    for (const id of list) select.appendChild(this.html("option", { value: id }, id));
+    select.appendChild(this.html("option", { value: this.OTHER }, "Other (type a name)\u2026"));
+    select.value = current || this.OTHER;
+    model.hidden = !!current;
+  },
+
+  async fetchModels(p, keyInput, select, model, btn, quiet) {
+    const core = this.core;
+    const apiKey = keyInput.value.trim();
+    if (!apiKey && core.Providers.adapters[p].listModels.url) {
+      if (!quiet) this.status("Enter the " + core.PROVIDER_LABELS[p] + " API key first.", true);
+      return;
+    }
     btn.disabled = true;
-    this.status("Fetching models from " + core.PROVIDER_LABELS[p] + "…");
+    if (!quiet) this.status("Fetching models from " + core.PROVIDER_LABELS[p] + "\u2026");
     try {
-      const ids = await core.Providers.listModels(p, keyInput.value.trim());
-      while (datalist.firstChild) datalist.firstChild.remove();
-      for (const id of ids) datalist.appendChild(this.html("option", { value: id }));
-      this.status(ids.length + " models found for " + core.PROVIDER_LABELS[p]
-        + ". Click the model field (or clear it) to pick one.");
+      const ids = await core.Providers.listModels(p, apiKey);
+      core.setModelCache(p, ids);
+      this.fillModelSelect(p, select, model);
+      this.status(ids.length + " models found for " + core.PROVIDER_LABELS[p] + ". Pick one from the dropdown.");
     } catch (e) {
-      this.status(e.message, true);
+      Zotero.logError(e);
+      if (!quiet) this.status(e.message, true);
     } finally {
       btn.disabled = false;
     }
@@ -130,10 +174,10 @@ var AISummaryPrefs = {
   async testProvider(p, keyInput, modelInput, btn) {
     const core = this.core;
     btn.disabled = true;
-    this.status("Testing " + core.PROVIDER_LABELS[p] + " (" + modelInput.value + ")…");
+    this.status("Testing " + core.PROVIDER_LABELS[p] + " (" + modelInput.value + ")\u2026");
     try {
       const reply = await core.Providers.test(p, keyInput.value.trim(), modelInput.value.trim());
-      this.status(core.PROVIDER_LABELS[p] + " works. Reply: “" + reply + "”");
+      this.status(core.PROVIDER_LABELS[p] + " works. Reply: \u201C" + reply + "\u201D");
     } catch (e) {
       this.status(e.message, true);
     } finally {

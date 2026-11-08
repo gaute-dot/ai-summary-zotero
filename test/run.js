@@ -170,6 +170,13 @@ test("model list parsers", () => {
   ] })), ["gemini-2.5-pro"]);
 });
 
+test("OpenAI models are listed newest first", () => {
+  const ids = A.Providers.adapters.openai.listModels.parse({ data: [
+    { id: "gpt-4.1", created: 100 }, { id: "gpt-5", created: 300 }, { id: "o3", created: 200 }
+  ] });
+  assert.deepEqual(plain(ids), ["gpt-5", "o3", "gpt-4.1"]);
+});
+
 test("error messages explain common failures", () => {
   assert.match(A.Providers.errorMessage("openai", 401, { error: { message: "bad" } }), /API key was rejected.*bad/);
   assert.match(A.Providers.errorMessage("gemini", 404, null), /model or endpoint not found/);

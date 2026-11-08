@@ -125,19 +125,11 @@ node test/run.js
 
 ### Publishing an update
 
-1. Raise `"version"` in `plugin/manifest.json` (for example to `1.2.0`) and commit.
-2. Push a matching tag:
+1. Raise `"version"` in `plugin/manifest.json` (for example to `1.2.0`).
+2. Commit and push it to the default branch (or push a matching tag such as `v1.2.0`).
+3. The *Release* workflow tests and builds the plugin and publishes a GitHub release `v1.2.0` with the `.xpi` and `updates.json`. It skips versions that already have a release.
 
-   ```bash
-   git tag v1.2.0
-   ```
-
-   ```bash
-   git push origin v1.2.0
-   ```
-
-3. The *Release* workflow tests and builds the plugin and publishes a GitHub release with the `.xpi` and `updates.json`.
-   Zotero picks it up with **Tools → Plugins → gear icon → Check for Updates** (or automatically within a day).
+Zotero picks the update up with **Tools → Plugins → gear icon → Check for Updates** (or automatically within a day).
 
 ## Project layout
 

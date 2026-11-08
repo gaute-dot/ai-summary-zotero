@@ -262,13 +262,9 @@ class ChatView {
     if (sameSession && draft && this.input) this.input.value = draft;
   }
 
-  buildFull(session) {
+  /** Library switch and pin banner (the chat window replaces this). */
+  buildHeader(wrap, session) {
     const Chat = AISummary.Chat;
-    const root = this.root;
-    root.replaceChildren();
-    const wrap = this.el("div", { class: "aisummary-chat" });
-    root.appendChild(wrap);
-
     // Whole-library switch
     const libRow = this.el("label", { class: "ais-row ais-libswitch" });
     const libBox = this.el("input", { type: "checkbox" });
@@ -276,10 +272,9 @@ class ChatView {
     libBox.disabled = session.busy;
     libBox.addEventListener("change", () => {
       if (libBox.checked) {
-        const libraryID = (this.item && this.item.libraryID) || Zotero.Libraries.userLibraryID;
-        Chat.startLibrary(libraryID);
+        this.setLibraryMode(true);
       } else {
-        Chat.unpin();
+        this.setLibraryMode(false);
       }
     });
     libRow.append(libBox, this.el("span", {}, "Search entire library"));
@@ -299,6 +294,23 @@ class ChatView {
       banner.appendChild(this.button("Unpin", () => Chat.unpin(), "Go back to chatting with the selected item"));
       wrap.appendChild(banner);
     }
+
+  }
+
+  setLibraryMode(on) {
+    const Chat = AISummary.Chat;
+    if (on) Chat.startLibrary((this.item && this.item.libraryID) || Zotero.Libraries.userLibraryID);
+    else Chat.unpin();
+  }
+
+  buildFull(session) {
+    const Chat = AISummary.Chat;
+    const root = this.root;
+    root.replaceChildren();
+    const wrap = this.el("div", { class: "aisummary-chat" });
+    root.appendChild(wrap);
+
+    this.buildHeader(wrap, session);
 
     // Sources list for multi-source chats
     if (session.itemIDs.length > 1 && session.kind !== "library") {

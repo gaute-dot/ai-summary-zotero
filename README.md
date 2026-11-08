@@ -17,6 +17,7 @@ Right-click one or more items → **AI Summary** → pick what you want. The plu
   - colored topic buttons (Summary, Topic, Background, Methods, Findings, Innovations, Challenges, Outlook, Compare) and your presets are one click away;
   - select text in the PDF reader and click **Ask AI** to explain, summarise, translate or critique the passage;
   - save one answer or the whole conversation as a Zotero note.
+- **Chat window**: click the AI Summary icon next to Zotero's search box (or AI Summary → *Open chat window*) for a separate, resizable chat window. It chats with the selected item(s) or the open PDF and follows your selection when you click back into it. It can also switch to *Whole library*, and has provider and model dropdowns at the top.
 - **Search entire library**: tick the box in AI Chat to ask questions across your whole library. Each question finds the most relevant items with Zotero's own full-text search and answers from them.
 - **Find papers** (item-pane section): search OpenAlex, Semantic Scholar, arXiv or Crossref (optionally only the last 12 months), see which results are already in your library, add new ones with one click (full metadata and open-access PDF when available), or let the AI discuss the results. A **Google Scholar ↗** button opens the same search in your browser.
 - **Ask a question (as note)**: type a question about the selected item(s); the answer is saved as an *AI Q&A* note.

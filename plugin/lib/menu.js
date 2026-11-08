@@ -1,7 +1,7 @@
 /* global Zotero, AISummary */
 "use strict";
 
-const AISUMMARY_IDS = ["aisummary-separator", "aisummary-menu", "aisummary-collection-separator", "aisummary-collection-chat"];
+const AISUMMARY_IDS = ["aisummary-separator", "aisummary-menu", "aisummary-collection-separator", "aisummary-collection-chat", "aisummary-tb-chat"];
 
 AISummary.addToWindow = function (win) {
   const doc = win.document;
@@ -51,7 +51,13 @@ AISummary.addToWindow = function (win) {
     sub.appendChild(subPopup);
     popup.appendChild(sub);
 
-    add(popup, "Ask a question…", () => AISummary.Actions.ask(win), busy ? { disabled: "true" } : {});
+    add(popup, "Ask a question… (saved as note)", () => AISummary.Actions.ask(win), busy ? { disabled: "true" } : {});
+
+    popup.appendChild(el("menuseparator"));
+    const n = AISummary.Actions.targetItems(win).items.length;
+    add(popup, n > 1 ? "Chat with the " + n + " selected items" : "Chat with this item",
+      () => AISummary.openChatForSelection(win), n ? {} : { disabled: "true" });
+    add(popup, "Open chat window", () => AISummary.ChatWindow.open(win));
 
     if (busy) {
       popup.appendChild(el("menuseparator"));
@@ -82,6 +88,25 @@ AISummary.addToWindow = function (win) {
 
   itemMenu.appendChild(sep);
   itemMenu.appendChild(menu);
+
+  // Toolbar icon next to the search box
+  try {
+    const search = doc.getElementById("zotero-tb-search");
+    const toolbar = (search && search.parentNode) || doc.getElementById("zotero-items-toolbar");
+    if (toolbar) {
+      const tb = el("toolbarbutton", {
+        id: "aisummary-tb-chat",
+        class: "zotero-tb-button",
+        tooltiptext: "AI Chat – chat with the selected items, the open PDF or your library",
+        image: AISummary.rootURI + "icons/toolbar.svg"
+      });
+      tb.addEventListener("command", () => AISummary.ChatWindow.open(win));
+      if (search && search.parentNode === toolbar) toolbar.insertBefore(tb, search);
+      else toolbar.appendChild(tb);
+    }
+  } catch (e) {
+    this.log("Could not add toolbar button: " + e);
+  }
 
   const collectionMenu = doc.getElementById("zotero-collectionmenu");
   if (collectionMenu) {

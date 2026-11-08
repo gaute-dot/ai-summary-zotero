@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" windowtype="aisummary:chat" width="560" height="780" persist="screenX screenY width height">
+<head>
+  <meta charset="utf-8"/>
+  <title>AI Chat</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      box-sizing: border-box; padding: 10px 12px; display: flex; flex-direction: column;
+      background: Canvas; color: CanvasText; font: message-box; font-size: 13px;
+    }
+    #root { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    #root .aisummary-chat { flex: 1; min-height: 0; }
+    #root .ais-messages { flex: 1; min-height: 120px; max-height: none; }
+    .aisw-head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px;
+      border-bottom: 1px solid rgba(127,127,127,.3); margin-bottom: 4px; }
+    .aisw-title { font-weight: 600; font-size: 14px; }
+    .aisw-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .aisw-row select { max-width: 16em; }
+    .aisw-row label { display: inline-flex; gap: 3px; align-items: center; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>

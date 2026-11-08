@@ -153,6 +153,7 @@ var AISummary = {
     }
     if (this.ChatPane) this.ChatPane.unregister();
     if (this.LitPane) this.LitPane.unregister();
+    if (this.ChatWindow) this.ChatWindow.close();
     if (Zotero.AISummary === this) delete Zotero.AISummary;
   },
 

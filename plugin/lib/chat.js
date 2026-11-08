@@ -220,7 +220,7 @@ AISummary.Chat = {
 
   LIBRARY_TOP: 20,
 
-  startLibrary(libraryID) {
+  startLibrary(libraryID, { pin = true } = {}) {
     const lib = Zotero.Libraries.get(libraryID);
     const s = {
       id: this.nextID++, kind: "library", label: "Whole library" + (lib && lib.name ? ": " + lib.name : ""),
@@ -228,7 +228,21 @@ AISummary.Chat = {
       status: "Each question searches the library for the most relevant items.", docs: null, index: null,
       mode: "excerpts", loading: null
     };
-    this.pin(s);
+    if (pin) this.pin(s);
+    return s;
+  },
+
+  groupSessions: new Map(), // "id,id,…" -> session, for the chat window
+
+  /** A remembered (not pinned) session for a set of items. */
+  groupSession(items) {
+    const list = items.filter(i => i && i.isRegularItem()).slice(0, this.MAX_ITEMS);
+    const key = list.map(i => i.id).sort((a, b) => a - b).join(",");
+    let s = this.groupSessions.get(key);
+    if (!s) {
+      s = this.newSession({ items: list, label: list.length + " selected items", kind: "items" });
+      this.groupSessions.set(key, s);
+    }
     return s;
   },
 

@@ -2,6 +2,7 @@
 "use strict";
 
 var scope = null;
+var chromeHandle = null;
 
 const FILES = [
   "lib/vendor/markdown-it.min.js",
@@ -13,6 +14,7 @@ const FILES = [
   "lib/actions.js",
   "lib/chat.js",
   "lib/chatpane.js",
+  "lib/chatwindow.js",
   "lib/litsearch.js",
   "lib/litpane.js",
   "lib/menu.js"
@@ -21,6 +23,15 @@ const FILES = [
 function install() {}
 
 async function startup({ id, version, rootURI }) {
+  // Lets the chat window be opened as chrome://aisummary/content/chatWindow.xhtml
+  try {
+    const aomStartup = Components.classes["@mozilla.org/addons/addon-manager-startup;1"]
+      .getService(Components.interfaces.amIAddonManagerStartup);
+    const manifestURI = Services.io.newURI(rootURI + "manifest.json");
+    chromeHandle = aomStartup.registerChrome(manifestURI, [["content", "aisummary", rootURI + "content/"]]);
+  } catch (e) {
+    Zotero.logError(e);
+  }
   scope = {
     Zotero,
     Services,
@@ -50,6 +61,10 @@ function shutdown() {
   if (!scope) return;
   scope.AISummary.shutdown();
   scope = null;
+  if (chromeHandle) {
+    chromeHandle.destruct();
+    chromeHandle = null;
+  }
 }
 
 function uninstall() {}

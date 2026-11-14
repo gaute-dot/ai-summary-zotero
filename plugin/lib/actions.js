@@ -124,6 +124,9 @@ AISummary.Actions = {
     job.settings = AISummary.getSettings();
     const provider = job.settings.provider;
     if (!(await AISummary.ensureApiKey(win))) return;
+    const what = (job.settings.inputMode === "pdf" && AISummary.Providers.supportsPdf(provider) ? "the PDF" : "the full text")
+      + " of " + (items.length === 1 ? "the selected item" : items.length + " items");
+    if (!AISummary.confirmSend(win, provider, what)) return;
 
     AISummary.batch.running = true;
     AISummary.batch.cancel = false;

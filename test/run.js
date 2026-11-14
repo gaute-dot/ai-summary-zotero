@@ -494,6 +494,119 @@ test("results are formatted for the AI and names are split for Zotero", () => {
   assert.equal(LS.splitName("UNESCO").fieldMode, 1);
 });
 
+/* ---------- local and custom providers, privacy ---------- */
+
+const setPrefs = (obj) => { for (const [k, v] of Object.entries(obj)) prefs["extensions.aisummary." + k] = v; };
+const clearPrefs = (...keys) => { for (const k of keys) delete prefs["extensions.aisummary." + k]; };
+
+test("Ollama: native API with context length, NDJSON streaming, model list", () => {
+  setPrefs({ localServer: "ollama", localContextTokens: 16384 });
+  const P = A.Providers;
+  const ad = P.adapterFor("local");
+  const r = ad.buildRequest(P.withEndpoint("local", Object.assign({}, base, { model: "qwen3:14b", systemCached: "DOCS", messages: convo, stream: true, temperature: 0.2 })));
+  assert.equal(r.url, "http://localhost:11434/api/chat");
+  assert.equal(r.headers.authorization, undefined);
+  assert.equal(r.body.options.num_ctx, 16384);
+  assert.equal(r.body.options.num_predict, 1000);
+  assert.equal(r.body.options.temperature, 0.2);
+  assert.equal(r.body.stream, true);
+  assert.equal(r.body.messages[0].content, "SYS\n\nDOCS");
+  assert.equal(r.body.messages.length, 4);
+  const s = P.newStreamState();
+  ad.streamEvent('{"message":{"content":"Hel"},"done":false}', s);
+  ad.streamEvent('{"message":{"content":"lo"},"done":true,"done_reason":"length"}', s);
+  assert.equal(s.text, "Hello");
+  assert.ok(s.done && s.truncated);
+  assert.equal(ad.parseResponse({ message: { content: "<think>x</think>Answer" }, done_reason: "stop" }).text, "Answer");
+  assert.throws(() => ad.streamEvent('{"error":"model not found"}', s), /Ollama: model not found/);
+  assert.deepEqual(plain(ad.listModels.parse({ models: [{ name: "gemma3:12b" }, { name: "qwen3:14b" }] })), ["gemma3:12b", "qwen3:14b"]);
+  setPrefs({ localBaseURL: "http://127.0.0.1:11434/v1/" });
+  assert.equal(ad.listModels.url(P.withEndpoint("local", {})), "http://127.0.0.1:11434/api/tags");
+  clearPrefs("localServer", "localContextTokens", "localBaseURL");
+});
+
+test("LM Studio and custom services use the OpenAI-compatible format", () => {
+  const P = A.Providers;
+  setPrefs({ localServer: "lmstudio" });
+  let r = P.adapterFor("local").buildRequest(P.withEndpoint("local", Object.assign({}, base, { model: "m", apiKey: "" })));
+  assert.equal(r.url, "http://localhost:1234/v1/chat/completions");
+  assert.equal(r.body.max_tokens, 1000);
+  assert.equal(r.headers.authorization, undefined);
+  setPrefs({ customBaseURL: "https://ai.uni.ac.uk/v1/", customAuthHeader: "authorization" });
+  r = P.adapterFor("custom").buildRequest(P.withEndpoint("custom", Object.assign({}, base, { model: "m" })));
+  assert.equal(r.url, "https://ai.uni.ac.uk/v1/chat/completions");
+  assert.equal(r.headers.authorization, "Bearer KEY");
+  setPrefs({ customBaseURL: "https://x.openai.azure.com/openai/v1", customAuthHeader: "api-key" });
+  r = P.adapterFor("custom").buildRequest(P.withEndpoint("custom", Object.assign({}, base, { model: "m" })));
+  assert.equal(r.headers["api-key"], "KEY");
+  assert.equal(r.body.max_completion_tokens, 1000);
+  assert.equal(r.body.max_tokens, undefined);
+  assert.equal(P.adapterFor("custom").listModels.url(P.withEndpoint("custom", {})), "https://x.openai.azure.com/openai/v1/models");
+  assert.equal(P.adapterFor("custom").parseResponse({ choices: [{ message: { content: "<think>a</think>B" } }] }).text, "B");
+  clearPrefs("localServer", "customBaseURL", "customAuthHeader");
+});
+
+test("keys: needed for cloud providers only; custom needs an address", () => {
+  assert.equal(A.needsKey("anthropic"), true);
+  assert.equal(A.needsKey("local"), false);
+  assert.equal(A.hasCredentials("local"), true);
+  assert.equal(A.hasCredentials("custom"), false);
+  setPrefs({ customBaseURL: "https://ai.uni.ac.uk/v1" });
+  assert.equal(A.hasCredentials("custom"), true);
+  assert.doesNotThrow(() => A.Providers.checkReady("local", { model: "m", apiKey: "" }));
+  assert.throws(() => A.Providers.checkReady("anthropic", { model: "m", apiKey: "" }), /No API key/);
+  clearPrefs("customBaseURL");
+});
+
+test("private mode blocks everything except a model on this computer", () => {
+  const P = A.Providers;
+  setPrefs({ privateMode: true });
+  assert.throws(() => P.checkReady("anthropic", { model: "m", apiKey: "k" }), /Private mode is on/);
+  assert.throws(() => P.checkReady("custom", { model: "m", apiKey: "k" }), /Private mode is on/);
+  assert.doesNotThrow(() => P.checkReady("local", { model: "m", apiKey: "" }));
+  setPrefs({ localBaseURL: "http://192.168.1.20:11434" });
+  assert.throws(() => P.checkReady("local", { model: "m" }), /not on this computer/);
+  setPrefs({ localBaseURL: "http://[::1]:11434" });
+  assert.doesNotThrow(() => P.checkReady("local", { model: "m" }));
+  assert.ok(P.isLoopback("http://127.0.0.1:1234/v1"));
+  assert.ok(!P.isLoopback("http://localhost.evil.com/v1"));
+  return A.LitSearch.search("openalex", "x").then(
+    () => assert.fail("search should be blocked"),
+    (e) => assert.match(e.message, /Private mode/)
+  ).finally(() => clearPrefs("privateMode", "localBaseURL"));
+});
+
+test("local models get text limits that fit their context length", () => {
+  setPrefs({ provider: "local", localContextTokens: 8192, maxChars: 300000, maxTokens: 16000 });
+  const s = A.getSettings();
+  assert.equal(s.maxTokens, 2048);
+  assert.equal(s.maxChars, (8192 - 2048 - 1500) * 3);
+  const c = A.Chat.settings();
+  assert.ok(c.chatContextChars < s.localInputChars && c.chatRetrievalChars < c.chatContextChars);
+  setPrefs({ provider: "anthropic" });
+  assert.equal(A.getSettings().maxChars, 300000);
+  clearPrefs("provider", "localContextTokens", "maxChars", "maxTokens");
+});
+
+test("warn before sending: asks once per provider, never for local", () => {
+  let asked = 0;
+  sandbox.Services.prompt = {
+    BUTTON_POS_0: 1, BUTTON_POS_1: 256, BUTTON_TITLE_IS_STRING: 127, BUTTON_TITLE_CANCEL: 1,
+    confirmEx: (w, t, text, f, b0, b1, b2, chk, state) => { asked++; state.value = true; return 0; }
+  };
+  A.sendConfirmed.clear();
+  assert.equal(A.confirmSend(null, "local", "x"), true);
+  assert.equal(asked, 0);
+  assert.equal(A.confirmSend(null, "openai", "x"), true);
+  assert.equal(A.confirmSend(null, "openai", "x"), true);
+  assert.equal(asked, 1);
+  sandbox.Services.prompt.confirmEx = () => { asked++; return 1; };
+  assert.equal(A.confirmSend(null, "gemini", "x"), false);
+  setPrefs({ warnBeforeSending: false });
+  assert.equal(A.confirmSend(null, "gemini", "x"), true);
+  clearPrefs("warnBeforeSending");
+});
+
 process.on("beforeExit", () => {
   if (!done) {
     done = true;

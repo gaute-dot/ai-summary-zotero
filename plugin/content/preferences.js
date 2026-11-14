@@ -73,6 +73,7 @@ var AISummaryPrefs = {
       tr.appendChild(this.html("td", { style: "white-space: nowrap;" }, core.PROVIDER_LABELS[p]));
 
       const keyTd = this.html("td");
+      if (p === "local" || p === "custom") this.serverFields(p, keyTd);
       const keyWrap = this.html("div", { style: "display: flex; gap: 4px;" });
       const key = this.html("input", { type: "password", id: "aisummary-key-" + p, placeholder: "API key", style: "flex: 1; min-width: 10em;" });
       key.value = core.getApiKey(p);
@@ -86,6 +87,8 @@ var AISummaryPrefs = {
         show.textContent = key.type === "password" ? "Show" : "Hide";
       });
       keyWrap.append(key, show);
+      if (p === "local") keyWrap.hidden = true; // no key needed
+      if (p === "custom") key.placeholder = "API key (if the service needs one)";
       keyTd.appendChild(keyWrap);
       tr.appendChild(keyTd);
 
@@ -123,13 +126,61 @@ var AISummaryPrefs = {
       tbody.appendChild(tr);
 
       // Load the list in the background the first time a key is available.
-      if (key.value && !core.getModelCache(p).length) {
+      if ((key.value || p === "local") && !core.getModelCache(p).length) {
         this.fetchModels(p, key, select, model, fetchBtn, true);
       }
       key.addEventListener("change", () => {
         if (key.value.trim()) this.fetchModels(p, key, select, model, fetchBtn, true);
       });
     }
+  },
+
+  /** Server address and options for the local and custom providers. */
+  serverFields(p, td) {
+    const core = this.core;
+    const box = this.html("div", { style: "display: flex; flex-direction: column; gap: 3px; margin-bottom: 3px;" });
+    const text = (pref, placeholder, width) => {
+      const input = this.html("input", { type: "text", placeholder, style: "min-width: " + (width || "14em") + ";" });
+      input.value = core.getPref(pref) || "";
+      input.addEventListener("input", () => core.setPref(pref, input.value.trim()));
+      return input;
+    };
+    if (p === "local") {
+      const row = this.html("div", { style: "display: flex; gap: 4px; align-items: center; flex-wrap: wrap;" });
+      const server = this.html("select", { title: "Which app runs the model" });
+      server.appendChild(this.html("option", { value: "ollama" }, "Ollama"));
+      server.appendChild(this.html("option", { value: "lmstudio" }, "LM Studio"));
+      server.value = core.getPref("localServer") || "ollama";
+      const url = text("localBaseURL", "", "12em");
+      const setPlaceholder = () => {
+        url.placeholder = server.value === "ollama" ? "http://localhost:11434" : "http://localhost:1234/v1";
+      };
+      setPlaceholder();
+      server.addEventListener("change", () => {
+        core.setPref("localServer", server.value);
+        setPlaceholder();
+      });
+      row.append(server, url);
+      const ctxRow = this.html("div", { style: "display: flex; gap: 4px; align-items: center;" });
+      const ctx = this.html("input", { type: "number", min: "2048", step: "1024", style: "max-width: 7em;",
+        title: "How much text the model can handle at once. In LM Studio, use the same value when loading the model." });
+      ctx.value = String(core.getPref("localContextTokens") || 32768);
+      ctx.addEventListener("input", () => {
+        const n = parseInt(ctx.value, 10);
+        if (n >= 2048) core.setPref("localContextTokens", n);
+      });
+      ctxRow.append(this.html("span", { style: "font-size: 11px; opacity: .8;" }, "Context length (tokens):"), ctx);
+      box.append(row, ctxRow);
+    } else {
+      const url = text("customBaseURL", "https://ai.example.ac.uk/v1", "16em");
+      const auth = this.html("select", { title: "How the key is sent" });
+      auth.appendChild(this.html("option", { value: "authorization" }, "Key as Bearer token"));
+      auth.appendChild(this.html("option", { value: "api-key" }, "Key as api-key header (Azure)"));
+      auth.value = core.getPref("customAuthHeader") || "authorization";
+      auth.addEventListener("change", () => core.setPref("customAuthHeader", auth.value));
+      box.append(url, auth);
+    }
+    td.appendChild(box);
   },
 
   OTHER: "__other__",
@@ -152,7 +203,7 @@ var AISummaryPrefs = {
   async fetchModels(p, keyInput, select, model, btn, quiet) {
     const core = this.core;
     const apiKey = keyInput.value.trim();
-    if (!apiKey && core.Providers.adapters[p].listModels.url) {
+    if (!apiKey && core.needsKey(p)) {
       if (!quiet) this.status("Enter the " + core.PROVIDER_LABELS[p] + " API key first.", true);
       return;
     }

@@ -6,7 +6,7 @@ Right-click one or more items → **AI Summary** → pick what you want. The plu
 
 ## Features
 
-- **Choose the AI provider and model**: Anthropic Claude, OpenAI, Google Gemini or Perplexity. Type any model name, or pick from the dropdown. It is filled automatically when a key is saved; **Fetch models** refreshes it.
+- **Choose the AI provider and model**: Anthropic Claude, OpenAI, Google Gemini, Perplexity, a **local AI on your own computer** (Ollama or LM Studio), or a **custom service** such as a university-approved AI gateway or Azure OpenAI. Type any model name, or pick from the dropdown. It is filled automatically when a key is saved; **Fetch models** refreshes it.
 - **Your own system prompt**: general rules for every summary (tone, strictness, format, language).
 - **Prompt presets**: built-in presets for *Structured summary*, *Short summary (TL;DR)*, *Critical appraisal*, *Methods and data extraction* and *Literature review notes*. Edit them or add your own in settings.
 - **Template variables**: `{{title}}`, `{{authors}}`, `{{year}}`, `{{date}}`, `{{publication}}`, `{{itemType}}`, `{{doi}}`, `{{url}}`, `{{abstract}}`, `{{tags}}`, `{{language}}`, `{{fulltext}}`, `{{question}}`.
@@ -46,6 +46,27 @@ API keys:
 | Perplexity | perplexity.ai → API settings | `sonar-pro` |
 
 Model names change often. If a default model is no longer offered, press **Fetch models** and pick a current one.
+
+## Keeping data on your computer
+
+**Private mode** (Settings → AI Summary → Privacy) makes sure no article text leaves your computer:
+
+1. Install **Ollama** (ollama.com) or **LM Studio** (lmstudio.ai).
+2. Download a model in it, for example Qwen 3, Gemma 3, Llama 3 or gpt-oss. A computer with 16 GB of memory or more is recommended.
+   With LM Studio, load the model and start the local server (Developer → Start server).
+3. In Settings → AI Summary, choose **Local AI on this computer**, pick Ollama or LM Studio, and choose the model from the dropdown.
+4. Tick **Private mode**.
+
+With private mode on:
+- only a model running at `localhost` can be used;
+- cloud providers, custom services and paper search are blocked;
+- the chat shows "🔒 Private mode".
+
+Set **Context length** to what the model can handle. The plugin sizes the article text to fit, and Ollama is told to use that length. In LM Studio, set the same value when loading the model. Local models are slower and less capable than cloud models, and long papers are cut to fit (the note says so).
+
+**Warn before sending** (on by default) asks before article text goes to any service outside your computer, once per provider each time Zotero starts.
+
+**Custom / university service**: if your university provides an approved AI service with an OpenAI-compatible address (many gateways and Azure OpenAI do), enter its address and key under *Custom / university service*. Data then goes only to that service.
 
 ## Usage
 

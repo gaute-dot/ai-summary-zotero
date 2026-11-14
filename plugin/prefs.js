@@ -39,3 +39,19 @@ pref("extensions.aisummary.chatStreaming", true);
 
 /* Literature search: openalex | semanticscholar | arxiv | crossref */
 pref("extensions.aisummary.litSource", "openalex");
+
+/* Local AI (Ollama / LM Studio) and custom OpenAI-compatible services */
+pref("extensions.aisummary.model.local", "");
+pref("extensions.aisummary.model.custom", "");
+/* ollama | lmstudio */
+pref("extensions.aisummary.localServer", "ollama");
+/* Empty = default address of the chosen app */
+pref("extensions.aisummary.localBaseURL", "");
+pref("extensions.aisummary.localContextTokens", 32768);
+pref("extensions.aisummary.customBaseURL", "");
+/* authorization (Bearer) | api-key (Azure) */
+pref("extensions.aisummary.customAuthHeader", "authorization");
+
+/* Privacy */
+pref("extensions.aisummary.privateMode", false);
+pref("extensions.aisummary.warnBeforeSending", true);

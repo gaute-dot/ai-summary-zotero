@@ -53,6 +53,11 @@ AISummary.Chat = {
     s.chatContextChars = num("chatContextChars", 250000);
     s.chatRetrievalChars = num("chatRetrievalChars", 40000);
     s.chatStreaming = AISummary.getPref("chatStreaming") !== false;
+    if (s.localInputChars) {
+      // A local model's context is small: leave room for the conversation.
+      s.chatContextChars = Math.min(s.chatContextChars, Math.floor(s.localInputChars * 0.7));
+      s.chatRetrievalChars = Math.min(s.chatRetrievalChars, Math.floor(s.localInputChars * 0.5));
+    }
     return s;
   },
 
@@ -342,10 +347,19 @@ AISummary.Chat = {
   /** options.display: short text shown in the chat instead of a long prompt. */
   async send(session, text, options = {}) {
     if (session.busy) return;
-    const content = this.composeUserMessage(session, text);
-    if (!content) return;
+    if (!String(text || "").trim() && !session.quote) return;
     const settings = this.settings();
     const provider = settings.provider;
+    const what = session.kind === "library"
+      ? "your question and text from the best-matching items in your library"
+      : "your question and the text of " + (session.itemIDs.length === 1 ? "this item" : session.itemIDs.length + " items");
+    if (!AISummary.confirmSend(Zotero.getMainWindow(), provider, what)) {
+      session.status = "Not sent.";
+      this.notify(session, "status");
+      return;
+    }
+    const content = this.composeUserMessage(session, text);
+    if (!content) return;
 
     const userMsg = { role: "user", content };
     if (options.display) userMsg.display = options.display;

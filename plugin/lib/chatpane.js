@@ -21,6 +21,7 @@ AISummary.ChatPane = {
 .aisummary-chat details.ais-sources li:hover { text-decoration: underline; }
 .aisummary-chat .ais-status { font-size: 11px; opacity: .7; }
 .aisummary-chat .ais-libswitch { font-size: 12px; cursor: pointer; }
+.aisummary-chat .ais-private { font-size: 12px; font-weight: 600; color: #2e7d32; }
 .aisummary-chat .ais-status.ais-error { color: #c0392b; opacity: 1; }
 .aisummary-chat .ais-messages { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
 .aisummary-chat .ais-empty { opacity: .7; font-style: italic; }
@@ -311,6 +312,10 @@ class ChatView {
     root.appendChild(wrap);
 
     this.buildHeader(wrap, session);
+    if (AISummary.isPrivate()) {
+      wrap.appendChild(this.el("div", { class: "ais-private" },
+        "\uD83D\uDD12 Private mode \u2013 only the local AI on this computer is used"));
+    }
 
     // Sources list for multi-source chats
     if (session.itemIDs.length > 1 && session.kind !== "library") {
@@ -549,7 +554,7 @@ class ChatView {
     const session = this.currentSession();
     if (!session || session.busy) return;
     if (!String(text || "").trim() && !session.quote) return;
-    if (!AISummary.getApiKey(AISummary.getSettings().provider)) {
+    if (!AISummary.hasCredentials(AISummary.getSettings().provider) || (AISummary.isPrivate() && AISummary.getSettings().provider !== "local")) {
       AISummary.ensureApiKey(this.doc.defaultView).then((ok) => {
         if (ok) this.send(text);
       });
@@ -569,7 +574,7 @@ class ChatView {
       language: AISummary.getSettings().language, fulltext: "", question: ""
     });
     const prompt = AISummary.renderTemplate(preset.prompt, vars);
-    if (!AISummary.getApiKey(AISummary.getSettings().provider)) {
+    if (!AISummary.hasCredentials(AISummary.getSettings().provider) || (AISummary.isPrivate() && AISummary.getSettings().provider !== "local")) {
       AISummary.ensureApiKey(this.doc.defaultView).then((ok) => {
         if (ok) this.runPreset(id);
       });

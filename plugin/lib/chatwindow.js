@@ -154,12 +154,14 @@ class ChatWindowView extends AISummary.ChatView {
     const settings = AISummary.getSettings();
     const provSel = this.el("select", { title: "AI provider" });
     for (const p of AISummary.PROVIDER_IDS) {
-      provSel.appendChild(this.el("option", { value: p }, AISummary.PROVIDER_LABELS[p] + (AISummary.getApiKey(p) ? "" : " (no key)")));
+      const opt = this.el("option", { value: p }, AISummary.PROVIDER_LABELS[p] + (AISummary.hasCredentials(p) ? "" : AISummary.needsKey(p) ? " (no key)" : " (not set up)"));
+      if (AISummary.isPrivate() && p !== "local") opt.disabled = true;
+      provSel.appendChild(opt);
     }
     provSel.value = settings.provider;
     provSel.addEventListener("change", async () => {
       AISummary.setPref("provider", provSel.value);
-      if (!AISummary.getApiKey(provSel.value)) await AISummary.promptApiKey(this.doc.defaultView, provSel.value);
+      if (!AISummary.hasCredentials(provSel.value)) await AISummary.ensureApiKey(this.doc.defaultView);
       this.render("full");
     });
     const current = AISummary.getModel(settings.provider);

@@ -67,15 +67,25 @@ AISummary.addToWindow = function (win) {
     popup.appendChild(el("menuseparator"));
     const setup = el("menu", { label: "AI provider: " + AISummary.PROVIDER_LABELS[provider] + " \u2013 " + model });
     const setupPopup = el("menupopup");
+    const priv = AISummary.isPrivate();
     for (const p of AISummary.PROVIDER_IDS) {
-      const hasKey = !!AISummary.getApiKey(p);
-      add(setupPopup, "Use " + AISummary.PROVIDER_LABELS[p] + (hasKey ? "" : " (no API key)"), () => {
+      const ready = AISummary.hasCredentials(p);
+      const extra = { type: "radio", checked: p === provider ? "true" : "false" };
+      if (priv && p !== "local") extra.disabled = "true";
+      add(setupPopup, "Use " + AISummary.PROVIDER_LABELS[p] + (ready ? "" : AISummary.needsKey(p) ? " (no API key)" : " (set up in Settings)"), () => {
         AISummary.setPref("provider", p);
-        if (!hasKey) AISummary.promptApiKey(win, p);
-      }, { type: "radio", checked: p === provider ? "true" : "false" });
+        if (!ready && AISummary.needsKey(p)) AISummary.promptApiKey(win, p);
+        else if (!ready) AISummary.openSettings();
+      }, extra);
     }
     setupPopup.appendChild(el("menuseparator"));
-    for (const p of AISummary.PROVIDER_IDS) {
+    add(setupPopup, "Private mode (local AI only)", () => {
+      AISummary.setPref("privateMode", !priv);
+      if (!priv) AISummary.setPref("provider", "local");
+      AISummary.Chat.notify(null, "full");
+    }, { type: "checkbox", checked: priv ? "true" : "false" });
+    setupPopup.appendChild(el("menuseparator"));
+    for (const p of AISummary.PROVIDER_IDS.filter(x => AISummary.needsKey(x))) {
       add(setupPopup, (AISummary.getApiKey(p) ? "Change " : "Enter ") + AISummary.PROVIDER_LABELS[p] + " API key\u2026",
         () => AISummary.promptApiKey(win, p));
     }

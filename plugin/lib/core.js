@@ -12,12 +12,14 @@ var AISummary = {
   windows: new Set(),
   batch: { running: false, cancel: false },
 
-  PROVIDER_IDS: ["anthropic", "openai", "gemini", "perplexity"],
+  PROVIDER_IDS: ["anthropic", "openai", "gemini", "perplexity", "local", "custom"],
   PROVIDER_LABELS: {
     anthropic: "Anthropic Claude",
     openai: "OpenAI",
     gemini: "Google Gemini",
-    perplexity: "Perplexity"
+    perplexity: "Perplexity",
+    local: "Local AI on this computer",
+    custom: "Custom / university service"
   },
 
   DEFAULT_SYSTEM_PROMPT: [
@@ -171,7 +173,7 @@ var AISummary = {
     return Zotero.Prefs.set(this.PREF_PREFIX + key, value, true);
   },
 
-  getSettings() {
+  baseSettings() {
     const num = (v, d) => {
       const n = Number(v);
       return Number.isFinite(n) && n > 0 ? n : d;
@@ -192,6 +194,61 @@ var AISummary = {
       addFooter: this.getPref("addFooter") !== false,
       batchDelayMs: Number(this.getPref("batchDelayMs")) || 0
     };
+  },
+
+  /**
+   * Settings, adjusted to what a local model can hold: its context length
+   * (in tokens) has to fit the article text, the instructions and the answer.
+   */
+  getSettings() {
+    const s = this.baseSettings();
+    if (s.provider === "local") {
+      const ctx = Number(this.getPref("localContextTokens")) || 32768;
+      s.maxTokens = Math.min(s.maxTokens, Math.max(1024, Math.floor(ctx * 0.25)));
+      // About 3 characters per token, keeping room for instructions.
+      s.localInputChars = Math.max(4000, Math.floor((ctx - s.maxTokens - 1500) * 3));
+      s.maxChars = Math.min(s.maxChars, s.localInputChars);
+    }
+    return s;
+  },
+
+  /** Cloud providers need an API key; local and custom servers may not. */
+  needsKey(provider) {
+    return provider !== "local" && provider !== "custom";
+  },
+
+  hasCredentials(provider) {
+    if (provider === "custom") return !!(this.getPref("customBaseURL") || "").trim();
+    return !this.needsKey(provider) || !!this.getApiKey(provider);
+  },
+
+  isPrivate() {
+    return !!this.getPref("privateMode");
+  },
+
+  sendConfirmed: new Set(),
+
+  /**
+   * "Warn before sending": ask once per provider per Zotero session before
+   * article text goes to a provider that is not on this computer.
+   */
+  confirmSend(win, provider, what) {
+    if (provider === "local" || this.getPref("warnBeforeSending") === false) return true;
+    if (this.sendConfirmed.has(provider)) return true;
+    const ps = Services.prompt;
+    const check = { value: false };
+    const model = this.getModel(provider);
+    const where = provider === "custom"
+      ? "the custom service at " + ((this.getPref("customBaseURL") || "").trim() || "(no address)")
+      : this.PROVIDER_LABELS[provider];
+    const flags = ps.BUTTON_POS_0 * ps.BUTTON_TITLE_IS_STRING + ps.BUTTON_POS_1 * ps.BUTTON_TITLE_CANCEL;
+    const choice = ps.confirmEx(win || null, "AI Summary \u2013 send data?",
+      "This sends " + what + " to " + where + (model ? " (" + model + ")" : "") + ", outside this computer.\n\n"
+        + "Check that your university\u2019s rules and the article\u2019s licence allow this.",
+      flags, "Send", null, null, "Don\u2019t ask again for this provider until Zotero restarts", check);
+    if (choice !== 0) return false;
+    if (check.value) this.sendConfirmed.add(provider);
+    return true;
   },
 
   getModel(provider) {
@@ -307,7 +364,7 @@ var AISummary = {
     const label = this.PROVIDER_LABELS[provider];
     let list = this.getModelCache(provider);
     const apiKey = this.getApiKey(provider);
-    if (apiKey || !this.Providers.adapters[provider].listModels.url) {
+    if (apiKey || !this.needsKey(provider)) {
       try {
         list = await this.Providers.listModels(provider, apiKey);
         this.setModelCache(provider, list);
@@ -338,7 +395,17 @@ var AISummary = {
   /** Make sure the active provider has a key, asking for one if needed. */
   async ensureApiKey(win) {
     const provider = this.getSettings().provider;
-    if (this.getApiKey(provider)) return true;
+    if (this.isPrivate() && provider !== "local") {
+      this.alert(win, "Private mode is on, so only the local AI on this computer can be used.\n\n"
+        + "Choose \u201C" + this.PROVIDER_LABELS.local + "\u201D as provider (AI Summary \u2192 AI provider), or turn private mode off in Settings \u2192 AI Summary.");
+      return false;
+    }
+    if (provider === "custom" && !this.hasCredentials(provider)) {
+      this.alert(win, "Set the address of your custom AI service in Settings \u2192 AI Summary first.");
+      this.openSettings();
+      return false;
+    }
+    if (this.hasCredentials(provider)) return true;
     return this.promptApiKey(win, provider);
   },
 

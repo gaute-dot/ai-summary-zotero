@@ -243,6 +243,93 @@ AISummary.Providers = {
       }
     },
 
+    /* Ollama's own API (lets the plugin set the context length). */
+    ollama: {
+      local: true,
+      format: "ndjson",
+      base(o) {
+        return String(o.baseURL || "http://localhost:11434").trim().replace(/\/+$/, "").replace(/\/v1$/, "");
+      },
+      buildRequest(o) {
+        const P = AISummary.Providers;
+        const options = { num_ctx: o.numCtx || 32768, num_predict: o.maxTokens };
+        if (o.temperature !== null && o.temperature !== undefined) options.temperature = o.temperature;
+        return {
+          url: this.base(o) + "/api/chat",
+          headers: { "content-type": "application/json" },
+          body: {
+            model: o.model,
+            messages: [{ role: "system", content: P.systemText(o) }].concat(P.messagesOf(o)),
+            stream: !!o.stream,
+            options
+          }
+        };
+      },
+      parseResponse(json) {
+        if (json.error) throw new Error("Ollama: " + json.error);
+        const text = AISummary.Providers.stripThink((json.message && json.message.content) || "");
+        return { text, citations: [], truncated: json.done_reason === "length" };
+      },
+      streamEvent(data, s) {
+        const ev = JSON.parse(data);
+        if (ev.error) throw new Error("Ollama: " + ev.error);
+        if (ev.message && typeof ev.message.content === "string") s.text += ev.message.content;
+        if (ev.done) {
+          s.done = true;
+          if (ev.done_reason === "length") s.truncated = true;
+        }
+      },
+      listModels: {
+        url: o => AISummary.Providers.adapters.ollama.base(o) + "/api/tags",
+        headers: () => ({}),
+        parse: json => (json.models || []).map(m => m.name)
+      }
+    },
+
+    /* Any OpenAI-compatible server: LM Studio, university AI gateways, Azure OpenAI (v1), vLLM, LiteLLM … */
+    openaiCompat: {
+      format: "sse",
+      base(o) {
+        return String(o.baseURL || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/, "");
+      },
+      authHeaders(o, apiKey) {
+        if (!apiKey) return {};
+        return o.authHeader === "api-key" ? { "api-key": apiKey } : { authorization: "Bearer " + apiKey };
+      },
+      buildRequest(o) {
+        const P = AISummary.Providers;
+        const base = this.base(o);
+        if (!base) throw new Error("No server address set. Add it in Settings → AI Summary.");
+        const body = {
+          model: o.model,
+          messages: [{ role: "system", content: P.systemText(o) }].concat(P.messagesOf(o))
+        };
+        // Azure OpenAI only accepts max_completion_tokens for newer models; most other servers use max_tokens.
+        if (/azure/i.test(base)) body.max_completion_tokens = o.maxTokens;
+        else body.max_tokens = o.maxTokens;
+        if (o.temperature !== null && o.temperature !== undefined) body.temperature = o.temperature;
+        if (o.stream) body.stream = true;
+        return {
+          url: base + "/chat/completions",
+          headers: Object.assign({ "content-type": "application/json" }, this.authHeaders(o, o.apiKey)),
+          body
+        };
+      },
+      parseResponse(json) {
+        const res = AISummary.Providers.adapters.openai.parseResponse(json);
+        res.text = AISummary.Providers.stripThink(res.text);
+        return res;
+      },
+      streamEvent(data, s) {
+        AISummary.Providers.adapters.openai.streamEvent(data, s);
+      },
+      listModels: {
+        url: o => AISummary.Providers.adapters.openaiCompat.base(o) + "/models",
+        headers: (key, o) => AISummary.Providers.adapters.openaiCompat.authHeaders(o, key),
+        parse: json => (json.data || []).map(m => m.id)
+      }
+    },
+
     perplexity: {
       buildRequest(o) {
         const P = AISummary.Providers;
@@ -339,12 +426,77 @@ AISummary.Providers = {
     return null;
   },
 
+  /** Which adapter a provider uses, plus server settings for local/custom providers. */
+  endpoint(provider) {
+    const g = k => AISummary.getPref(k);
+    if (provider === "local") {
+      const server = g("localServer") || "ollama";
+      const defaultURL = server === "ollama" ? "http://localhost:11434" : "http://localhost:1234/v1";
+      return {
+        adapter: server === "ollama" ? "ollama" : "openaiCompat",
+        baseURL: (g("localBaseURL") || "").trim() || defaultURL,
+        numCtx: Number(g("localContextTokens")) || 32768
+      };
+    }
+    if (provider === "custom") {
+      return { adapter: "openaiCompat", baseURL: (g("customBaseURL") || "").trim(), authHeader: g("customAuthHeader") || "authorization" };
+    }
+    return { adapter: provider };
+  },
+
+  adapterFor(provider) {
+    const a = this.adapters[this.endpoint(provider).adapter];
+    if (!a) throw new Error("Unknown provider: " + provider);
+    return a;
+  },
+
+  /** Request options with the provider's server settings filled in. */
+  withEndpoint(provider, opts) {
+    const ep = this.endpoint(provider);
+    return Object.assign({}, opts, {
+      baseURL: ep.baseURL, numCtx: ep.numCtx, authHeader: ep.authHeader
+    });
+  },
+
+  isLoopback(url) {
+    return /^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?(\/|$)/i.test(String(url || "").trim());
+  },
+
+  /** Private mode: only a model running on this computer may be used. */
+  assertAllowed(provider) {
+    if (!AISummary.isPrivate()) return;
+    if (provider !== "local") {
+      throw new Error("Private mode is on, so only the local AI on this computer can be used. "
+        + "Choose \u201C" + AISummary.PROVIDER_LABELS.local + "\u201D as provider, or turn private mode off in Settings \u2192 AI Summary.");
+    }
+    const ep = this.endpoint(provider);
+    if (!this.isLoopback(ep.baseURL)) {
+      throw new Error("Private mode is on, but the local server address (" + ep.baseURL + ") is not on this computer. "
+        + "Use an address starting with http://localhost or http://127.0.0.1.");
+    }
+  },
+
   checkReady(provider, opts) {
-    if (!this.adapters[provider]) throw new Error("Unknown provider: " + provider);
-    if (!opts.apiKey) {
+    this.assertAllowed(provider);
+    this.adapterFor(provider);
+    if (AISummary.needsKey(provider) && !opts.apiKey) {
       throw new Error("No API key set for " + AISummary.PROVIDER_LABELS[provider] + ". Add one in Settings → AI Summary.");
     }
+    if (provider === "custom" && !this.endpoint(provider).baseURL) {
+      throw new Error("No server address set for the custom provider. Add it in Settings → AI Summary.");
+    }
     if (!opts.model) throw new Error("No model set for " + AISummary.PROVIDER_LABELS[provider] + ".");
+  },
+
+  /** Friendlier message when a local server is not running. */
+  connectionError(provider, e) {
+    if (provider === "local") {
+      const ep = this.endpoint(provider);
+      const app = ep.adapter === "ollama" ? "Ollama" : "LM Studio";
+      return new Error("Could not reach " + app + " at " + ep.baseURL + ". Make sure " + app + " is running"
+        + (app === "LM Studio" ? " and its local server is started (Developer \u2192 Start server)" : "") + ".");
+    }
+    return e;
   },
 
   isRetryable(status) {
@@ -372,10 +524,16 @@ AISummary.Providers = {
   /** Send one request and wait for the whole answer. Retries on rate limits and server errors. */
   async generate(provider, opts) {
     this.checkReady(provider, opts);
-    const adapter = this.adapters[provider];
-    const req = adapter.buildRequest(Object.assign({}, opts, { stream: false }));
+    const adapter = this.adapterFor(provider);
+    const req = adapter.buildRequest(Object.assign(this.withEndpoint(provider, opts), { stream: false }));
     for (let attempt = 0; ; attempt++) {
-      const { status, json, retryAfter } = await this.httpJSON("POST", req.url, req.headers, req.body);
+      let res;
+      try {
+        res = await this.httpJSON("POST", req.url, req.headers, req.body);
+      } catch (e) {
+        throw this.connectionError(provider, e);
+      }
+      const { status, json, retryAfter } = res;
       if (status >= 200 && status < 300 && json) return adapter.parseResponse(json);
       if (this.isRetryable(status) && attempt < this.RETRY_DELAYS.length) {
         await AISummary.sleep(retryAfter ? Math.min(retryAfter * 1000, 60000) : this.RETRY_DELAYS[attempt]);
@@ -417,6 +575,26 @@ AISummary.Providers = {
     yield* flush(true);
   },
 
+  /** Split a byte stream of newline-delimited JSON (Ollama) into lines. */
+  async *ndjsonLines(body, TextDecoderCtor) {
+    const reader = body.getReader();
+    const decoder = new TextDecoderCtor();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (line) yield line;
+      }
+    }
+    buf += decoder.decode();
+    if (buf.trim()) yield buf.trim();
+  },
+
   /**
    * Stream an answer. Calls onText(textSoFar) as text arrives.
    * Falls back to a normal request when streaming is not available.
@@ -429,15 +607,21 @@ AISummary.Providers = {
       onText(res.text);
       return res;
     }
-    const adapter = this.adapters[provider];
-    const req = adapter.buildRequest(Object.assign({}, opts, { stream: true }));
+    const adapter = this.adapterFor(provider);
+    const req = adapter.buildRequest(Object.assign(this.withEndpoint(provider, opts), { stream: true }));
     for (let attempt = 0; ; attempt++) {
-      const response = await win.fetch(req.url, {
-        method: "POST",
-        headers: req.headers,
-        body: JSON.stringify(req.body),
-        signal
-      });
+      let response;
+      try {
+        response = await win.fetch(req.url, {
+          method: "POST",
+          headers: req.headers,
+          body: JSON.stringify(req.body),
+          signal
+        });
+      } catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        throw this.connectionError(provider, e);
+      }
       if (!response.ok) {
         let json = null;
         try { json = JSON.parse(await response.text()); } catch (e) { /* not JSON */ }
@@ -449,26 +633,39 @@ AISummary.Providers = {
         throw this.apiError(provider, response.status, json, opts.model);
       }
       const state = this.newStreamState();
-      for await (const data of this.sseData(response.body, win.TextDecoder)) {
+      const events = adapter.format === "ndjson"
+        ? this.ndjsonLines(response.body, win.TextDecoder)
+        : this.sseData(response.body, win.TextDecoder);
+      for await (const data of events) {
         try {
           adapter.streamEvent(data, state);
         } catch (e) {
           if (e instanceof SyntaxError) continue; // keep-alive or partial line
           throw e;
         }
-        onText(provider === "perplexity" ? this.stripThink(state.text) : state.text);
+        onText(this.stripThink(state.text));
         if (state.done) break;
       }
-      if (provider === "perplexity") state.text = this.stripThink(state.text);
+      state.text = this.stripThink(state.text);
       return { text: state.text, citations: state.citations, truncated: state.truncated };
     }
   },
 
   async listModels(provider, apiKey) {
-    const spec = this.adapters[provider].listModels;
+    this.assertAllowed(provider);
+    const adapter = this.adapterFor(provider);
+    const spec = adapter.listModels;
     if (Array.isArray(spec)) return spec.slice();
-    if (!apiKey) throw new Error("Enter an API key first.");
-    const { status, json } = await this.httpJSON("GET", spec.url, spec.headers(apiKey), null, 30000);
+    if (!apiKey && AISummary.needsKey(provider)) throw new Error("Enter an API key first.");
+    const o = this.withEndpoint(provider, {});
+    const url = typeof spec.url === "function" ? spec.url(o) : spec.url;
+    let res;
+    try {
+      res = await this.httpJSON("GET", url, spec.headers(apiKey, o), null, 30000);
+    } catch (e) {
+      throw this.connectionError(provider, e);
+    }
+    const { status, json } = res;
     if (status < 200 || status >= 300 || !json) throw this.apiError(provider, status, json, null);
     // Keep the provider's order (Anthropic lists newest first; OpenAI is sorted by date above).
     return [...new Set(spec.parse(json))];

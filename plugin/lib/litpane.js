@@ -132,6 +132,12 @@ class LitView {
     const st = this.pane.stateFor(this.item);
     const wrap = this.el("div", { class: "aisummary-lit" });
     this.root.replaceChildren(wrap);
+    if (AISummary.isPrivate()) {
+      wrap.appendChild(this.el("div", { class: "ail-status" },
+        "\uD83D\uDD12 Private mode is on, so paper search is turned off (it would send your search words to online databases). "
+        + "Turn private mode off in Settings \u2192 AI Summary to use it."));
+      return;
+    }
 
     // Query
     const row = this.el("div", { class: "ail-row" });
@@ -280,7 +286,7 @@ class LitView {
       Chat.send(session, text, { display: "Discuss " + st.results.length + " search results for \u201C" + st.query + "\u201D" });
       AISummary.ChatPane.reveal(this.doc.defaultView);
     };
-    if (!AISummary.getApiKey(AISummary.getSettings().provider)) {
+    if (!AISummary.hasCredentials(AISummary.getSettings().provider) || (AISummary.isPrivate() && AISummary.getSettings().provider !== "local")) {
       AISummary.ensureApiKey(this.doc.defaultView).then(ok => ok && go());
     } else {
       go();

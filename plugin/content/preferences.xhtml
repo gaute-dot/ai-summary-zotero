@@ -1,5 +1,19 @@
 <vbox id="aisummary-pane" onload="AISummaryPrefs.init()">
   <groupbox>
+    <label><html:h2>Privacy</html:h2></label>
+    <html:div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center;">
+      <html:input id="aisummary-privateMode" type="checkbox" data-pref="privateMode"/>
+      <html:label for="aisummary-privateMode"><html:strong>Private mode:</html:strong> only use the local AI on this computer. Cloud providers, custom services and paper search are blocked, so no article text leaves this computer.</html:label>
+      <html:input id="aisummary-warnBeforeSending" type="checkbox" data-pref="warnBeforeSending"/>
+      <html:label for="aisummary-warnBeforeSending">Ask before sending article text to a service outside this computer (once per provider each time Zotero starts).</html:label>
+    </html:div>
+    <html:p style="opacity: 0.75; margin: 6px 0 0;">
+      For local AI, install <html:strong>Ollama</html:strong> (ollama.com) or <html:strong>LM Studio</html:strong> (lmstudio.ai), download a model in it,
+      then choose “Local AI on this computer” below and pick the model.
+    </html:p>
+  </groupbox>
+
+  <groupbox>
     <label><html:h2>AI provider and model</html:h2></label>
     <html:div class="aisummary-row">
       <html:label for="aisummary-provider">Provider used for summaries:</html:label>
@@ -8,6 +22,8 @@
         <html:option value="openai">OpenAI</html:option>
         <html:option value="gemini">Google Gemini</html:option>
         <html:option value="perplexity">Perplexity</html:option>
+        <html:option value="local">Local AI on this computer</html:option>
+        <html:option value="custom">Custom / university service</html:option>
       </html:select>
     </html:div>
     <html:p id="aisummary-fallback-hint" style="padding: 6px; border-radius: 4px; background: rgba(230,160,0,.18); margin: 4px 0;">

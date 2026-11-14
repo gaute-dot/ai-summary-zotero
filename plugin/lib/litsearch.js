@@ -171,6 +171,7 @@ AISummary.LitSearch = {
   },
 
   async search(source, query, opts = {}) {
+    if (AISummary.isPrivate()) throw new Error("Private mode is on, so paper search is turned off.");
     if (!String(query || "").trim()) throw new Error("Type something to search for.");
     const req = this.buildRequest(source, query, opts);
     const xhr = await Zotero.HTTP.request("GET", req.url, {
